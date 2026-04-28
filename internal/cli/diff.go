@@ -137,21 +137,6 @@ func unifiedLineDiff(fromLabel, toLabel, from, to string) string {
 	}
 	fromLines := splitDiffLines(from)
 	toLines := splitDiffLines(to)
-	table := make([][]int, len(fromLines)+1)
-	for i := range table {
-		table[i] = make([]int, len(toLines)+1)
-	}
-	for i := len(fromLines) - 1; i >= 0; i-- {
-		for j := len(toLines) - 1; j >= 0; j-- {
-			if fromLines[i] == toLines[j] {
-				table[i][j] = table[i+1][j+1] + 1
-			} else if table[i+1][j] >= table[i][j+1] {
-				table[i][j] = table[i+1][j]
-			} else {
-				table[i][j] = table[i][j+1]
-			}
-		}
-	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "--- %s\n+++ %s\n", fromLabel, toLabel)
 	i, j := 0, 0
@@ -160,10 +145,14 @@ func unifiedLineDiff(fromLabel, toLabel, from, to string) string {
 			fmt.Fprintf(&b, " %s\n", fromLines[i])
 			i++
 			j++
-		} else if table[i+1][j] >= table[i][j+1] {
+			continue
+		}
+		nextFrom, nextTo := findNextMatchingLine(fromLines, toLines, i, j, 64)
+		for i < nextFrom {
 			fmt.Fprintf(&b, "-%s\n", fromLines[i])
 			i++
-		} else {
+		}
+		for j < nextTo {
 			fmt.Fprintf(&b, "+%s\n", toLines[j])
 			j++
 		}
@@ -177,6 +166,33 @@ func unifiedLineDiff(fromLabel, toLabel, from, to string) string {
 		j++
 	}
 	return b.String()
+}
+
+func findNextMatchingLine(fromLines, toLines []string, fromStart, toStart, window int) (int, int) {
+	fromEnd := minInt(len(fromLines), fromStart+window)
+	toEnd := minInt(len(toLines), toStart+window)
+	bestFrom, bestTo := fromStart+1, toStart+1
+	bestDistance := window * 2
+	for i := fromStart; i < fromEnd; i++ {
+		for j := toStart; j < toEnd; j++ {
+			if fromLines[i] != toLines[j] {
+				continue
+			}
+			distance := (i - fromStart) + (j - toStart)
+			if distance < bestDistance {
+				bestFrom, bestTo = i, j
+				bestDistance = distance
+			}
+		}
+	}
+	return bestFrom, bestTo
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func splitDiffLines(content string) []string {

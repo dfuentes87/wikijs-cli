@@ -21,16 +21,14 @@ func (a *app) cloneCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if title == "" {
-			title = source.Title
-		}
+		cloneTitle := firstNonEmpty(title, source.Title)
 		tags := []string(nil)
 		if withTags {
 			tags = []string(source.Tags)
 		}
 		created, err := client.CreatePage(cmd.Context(), api.CreatePageInput{
 			Path:        args[1],
-			Title:       title,
+			Title:       cloneTitle,
 			Content:     source.Content,
 			Description: source.Description,
 			Tags:        tags,

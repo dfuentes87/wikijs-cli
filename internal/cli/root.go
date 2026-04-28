@@ -83,7 +83,10 @@ func newRootCommand(a *app) *cobra.Command {
 		a.moveCommand(),
 		a.deleteCommand(),
 		a.tagsCommand(),
+		a.tagCommand(),
 		a.statsCommand(),
+		a.infoCommand(),
+		a.grepCommand(),
 		a.versionsCommand(),
 		a.revertCommand(),
 		a.assetCommand(),
@@ -92,6 +95,7 @@ func newRootCommand(a *app) *cobra.Command {
 		a.backupCommand(),
 		a.restoreBackupCommand(),
 		a.exportCommand(),
+		a.syncCommand(),
 		a.checkLinksCommand(),
 		a.diffCommand(),
 		a.cloneCommand(),
@@ -418,20 +422,6 @@ func (a *app) tagsCommand() *cobra.Command {
 			rows = append(rows, []string{strconv.Itoa(tag.ID), tag.Tag, tag.Title})
 		}
 		return a.print(tags, []string{"ID", "Tag", "Title"}, rows)
-	}}
-}
-
-func (a *app) statsCommand() *cobra.Command {
-	return &cobra.Command{Use: "stats", Short: "Show page statistics", RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := a.getClient()
-		if err != nil {
-			return err
-		}
-		stats, err := client.Stats(cmd.Context())
-		if err != nil {
-			return err
-		}
-		return a.print(stats, []string{"Metric", "Value"}, [][]string{{"Total pages", strconv.Itoa(stats.TotalPages)}, {"Published", strconv.Itoa(stats.PublishedPages)}, {"Drafts", strconv.Itoa(stats.DraftPages)}})
 	}}
 }
 

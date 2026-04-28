@@ -2,15 +2,15 @@
 
 A Go command-line client for Wiki.js 2.x.
 
-Forked from [hopyky/wikijs-cli](https://github.com/hopyky/wikijs-cli) (no longer avialble) which was written in JavaScript. The majority of
+Forked from [hopyky/wikijs-cli](https://github.com/hopyky/wikijs-cli) (no longer available) which was written in JavaScript. The majority of
 features have been ported over, with some minor changes to naming and additional support.
 
 ## Features
 
 - Full CRUD operations - Create, read, update, and delete wiki pages
-- Tag management - Add, remove, and list tags
+- Tag management - Add, remove, set, and list tags
 - Asset management - Upload, list, and delete files
-- Search - Full-text search and content grep
+- Search - Full-text page search and content grep
 - Backup & Restore - Export and import wiki content
 - Bulk operations - Create/update multiple pages from files with progress bars
 - Version control - View history and revert to previous versions
@@ -20,9 +20,10 @@ features have been ported over, with some minor changes to naming and additional
 - Shell completion - Auto-completion for bash/zsh/fish
 - Tree view - Visual hierarchy of all pages
 - Interactive shell - REPL mode for multiple commands
-- Markdown linting - Validate and fix markdown issues
+- Markdown linting - Validate markdown issues
 - Search & replace - Find and replace text across pages
-- Rate limiting - Configurable delays for bulk operations
+- Local sync - Download wiki pages to a local directory
+- Rate limiting - Configurable delays for bulk operations and sync
 
 ## Install
 
@@ -45,9 +46,9 @@ Copy the example config into your home directory and edit it. Default paths:
 | `apiToken` | API authentication token | Required |
 | `defaultEditor` | Default editor type | `markdown` |
 | `defaultLocale` | Default page locale | `en` |
-| `autoSync.enabled` | Enable auto-sync | `false` |
-| `autoSync.path` | Local sync directory | - |
-| `autoSync.intervalHours` | Sync interval | `24` |
+| `autoSync.enabled` | Reserved for future automatic sync | `false` |
+| `autoSync.path` | Default `sync` output directory | - |
+| `autoSync.intervalHours` | Reserved sync interval | `24` |
 | `backup.enabled` | Enable backups | `true` |
 | `backup.path` | Backup directory | - |
 | `backup.keepDays` | Backup retention | `30` |
@@ -128,9 +129,9 @@ wikijs tags
 wikijs tags --format json
 
 # Manage page tags
-wikijs tag 1 add "important"
-wikijs tag 1 remove "draft"
-wikijs tag 1 set "tag1,tag2,tag3"  # Replace all tags
+wikijs tag 1 add important
+wikijs tag 1 remove draft
+wikijs tag 1 set docs,guide
 ```
 
 ### Search & Discovery
@@ -139,12 +140,13 @@ wikijs tag 1 set "tag1,tag2,tag3"  # Replace all tags
 # Full-text search
 wikijs search "configuration"
 
-# Search within page content (grep)
+# Search within page content
 wikijs grep "TODO"
-wikijs grep "deprecated" --path "/docs" --case-sensitive
+wikijs grep "deprecated" --path /docs --case-sensitive
 
 # Get page info
 wikijs info 1
+wikijs info /docs/guide
 
 # View statistics
 wikijs stats
@@ -189,7 +191,9 @@ wikijs bulk-update ./pages --path-prefix /docs
 wikijs bulk-update ./pages --skip-missing
 
 # Sync all pages to local directory
-<TODO>
+wikijs sync --output ./local-wiki
+wikijs sync --output ./local-wiki --file-format json --format json
+wikijs sync --path /docs --delete
 ```
 
 ### Asset Management

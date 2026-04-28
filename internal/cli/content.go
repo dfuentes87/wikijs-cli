@@ -110,15 +110,24 @@ func (a *app) validateCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		assets, err := client.ListAssets(cmd.Context(), "", 0)
-		if err != nil {
-			return err
+		needsPages, needsAssets := validationIndexNeeds(pages)
+		var existingPages map[string]struct{}
+		if needsPages {
+			allPages, err := client.ListPages(cmd.Context(), api.ListOptions{Limit: 0})
+			if err != nil {
+				return err
+			}
+			existingPages = pagePathSet(allPages)
 		}
-		allPages, err := client.ListPages(cmd.Context(), api.ListOptions{Limit: 0})
-		if err != nil {
-			return err
+		var existingAssets map[string]struct{}
+		if needsAssets {
+			assets, err := client.ListAssets(cmd.Context(), "", 0)
+			if err != nil {
+				return err
+			}
+			existingAssets = assetPathSet(assets)
 		}
-		result := validatePages(pages, pagePathSet(allPages), assetPathSet(assets))
+		result := validatePages(pages, existingPages, existingAssets)
 		if a.format == "json" {
 			if err := output.JSON(a.out, result); err != nil {
 				return err
@@ -196,11 +205,32 @@ func validatePages(pages []api.Page, existingPages map[string]struct{}, assets m
 		for _, issue := range lint.Warnings {
 			result.Warnings = append(result.Warnings, validationIssue{PageID: page.ID, PagePath: page.Path, Line: issue.Line, Rule: issue.Rule, Message: issue.Message})
 		}
-		result.BrokenLinks = append(result.BrokenLinks, brokenLinksForPage(page, existingPages)...)
-		result.BrokenImages = append(result.BrokenImages, brokenImagesForPage(page, assets)...)
+		if existingPages != nil {
+			result.BrokenLinks = append(result.BrokenLinks, brokenLinksForPage(page, existingPages)...)
+		}
+		if assets != nil {
+			result.BrokenImages = append(result.BrokenImages, brokenImagesForPage(page, assets)...)
+		}
 	}
 	result.Valid = len(result.Errors) == 0 && len(result.BrokenLinks) == 0 && len(result.BrokenImages) == 0
 	return result
+}
+
+func validationIndexNeeds(pages []api.Page) (needsPages bool, needsAssets bool) {
+	for _, page := range pages {
+		for _, link := range markdown.Links(page.Content) {
+			if link.Image {
+				if _, ok := internalAssetTarget(link.Target); ok {
+					needsAssets = true
+				}
+				continue
+			}
+			if _, ok := internalPageTarget(page.Path, link.Target); ok {
+				needsPages = true
+			}
+		}
+	}
+	return needsPages, needsAssets
 }
 
 func brokenLinksForPage(page api.Page, existing map[string]struct{}) []brokenLink {

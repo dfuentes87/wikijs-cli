@@ -12,8 +12,10 @@ type operationSummary struct {
 	Skipped int      `json:"skipped,omitempty"`
 	Matched int      `json:"matched,omitempty"`
 	Changed int      `json:"changed,omitempty"`
+	Deleted int      `json:"deleted,omitempty"`
 	Files   int      `json:"files,omitempty"`
 	Pages   int      `json:"pages,omitempty"`
+	Words   int      `json:"words,omitempty"`
 	Paths   []string `json:"paths,omitempty"`
 }
 

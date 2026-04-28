@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,18 +45,11 @@ func (a *app) exportCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			data, err := pageExportData(page, fileFormat)
+			if err != nil {
 				return err
 			}
-			if fileFormat == "json" {
-				data, err := json.MarshalIndent(page, "", "  ")
-				if err != nil {
-					return err
-				}
-				if err := os.WriteFile(outPath, append(data, '\n'), 0o600); err != nil {
-					return err
-				}
-			} else if err := os.WriteFile(outPath, []byte(page.Content), 0o600); err != nil {
+			if _, err := writeFileIfChanged(outPath, data); err != nil {
 				return err
 			}
 			summary.Pages++
@@ -90,4 +85,29 @@ func exportFilePath(root, pagePath, fileFormat string) (string, error) {
 		rel += ext
 	}
 	return filepath.Join(root, rel), nil
+}
+
+func pageExportData(page api.Page, fileFormat string) ([]byte, error) {
+	if fileFormat == "json" {
+		data, err := json.MarshalIndent(page, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		return append(data, '\n'), nil
+	}
+	return []byte(page.Content), nil
+}
+
+func writeFileIfChanged(path string, data []byte) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if err == nil && bytes.Equal(existing, data) {
+		return false, nil
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(path, data, 0o600)
 }
