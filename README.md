@@ -41,14 +41,12 @@ Copy the example config into your home directory and edit it. Default paths:
 ### Configuration Options
 
 | Option | Description | Default |
-|--------|-------------|---------|
+| -------- | ------------- | --------- |
 | `url` | Wiki.js server URL | Required |
 | `apiToken` | API authentication token | Required |
 | `defaultEditor` | Default editor type | `markdown` |
 | `defaultLocale` | Default page locale | `en` |
-| `autoSync.enabled` | Reserved for future automatic sync | `false` |
 | `autoSync.path` | Default `sync` output directory | - |
-| `autoSync.intervalHours` | Reserved sync interval | `24` |
 | `backup.enabled` | Enable backups | `true` |
 | `backup.path` | Backup directory | - |
 | `backup.keepDays` | Backup retention | `30` |
@@ -78,8 +76,7 @@ Environment variables override values:
 ### Basic Commands
 
 ```bash
-# Check connection/version
-wikijs version
+# Check connection
 wikijs health
 
 # Interactive shell mode

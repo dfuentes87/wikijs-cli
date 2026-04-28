@@ -32,6 +32,16 @@ func Render(pages []api.Page) string {
 }
 
 func renderNode(n *node, name, prefix string, last bool, lines *[]string) {
+	if name != "" && len(n.children) == 0 && len(n.pages) == 1 {
+		connector := "|-- "
+		if last {
+			connector = "`-- "
+		}
+		page := n.pages[0]
+		*lines = append(*lines, fmt.Sprintf("%s%s%s (%d)", prefix, connector, page.Title, page.ID))
+		return
+	}
+
 	if name != "" {
 		connector := "|-- "
 		if last {

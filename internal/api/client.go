@@ -10,7 +10,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -237,6 +239,9 @@ func (c *Client) GetPage(ctx context.Context, idOrPath string, locale string, wi
 			} `json:"pages"`
 		}
 		if err := c.graphql(ctx, query, map[string]any{"id": id}, &data); err != nil {
+			if isNotFoundGraphQLError(err) {
+				return Page{}, fmt.Errorf("%w: page %s", ErrNotFound, idOrPath)
+			}
 			return Page{}, err
 		}
 		if data.Pages.Single == nil {
@@ -251,6 +256,9 @@ func (c *Client) GetPage(ctx context.Context, idOrPath string, locale string, wi
 			} `json:"pages"`
 		}
 		if err := c.graphql(ctx, query, map[string]any{"path": trimLeadingSlash(idOrPath), "locale": locale}, &data); err != nil {
+			if isNotFoundGraphQLError(err) {
+				return Page{}, fmt.Errorf("%w: page %s", ErrNotFound, idOrPath)
+			}
 			return Page{}, err
 		}
 		if data.Pages.SingleByPath == nil {
@@ -283,6 +291,10 @@ func (c *Client) CreatePage(ctx context.Context, input CreatePageInput) (Page, e
 	if err := validatePath(input.Path); err != nil {
 		return Page{}, err
 	}
+	tags := input.Tags
+	if tags == nil {
+		tags = []string{}
+	}
 	const mutation = `mutation($content: String!, $description: String!, $editor: String!, $isPrivate: Boolean!, $isPublished: Boolean!, $locale: String!, $path: String!, $tags: [String]!, $title: String!) { pages { create(content: $content, description: $description, editor: $editor, isPrivate: $isPrivate, isPublished: $isPublished, locale: $locale, path: $path, tags: $tags, title: $title) { responseResult { succeeded errorCode message } page { id path title } } } }`
 	var data struct {
 		Pages struct {
@@ -292,7 +304,7 @@ func (c *Client) CreatePage(ctx context.Context, input CreatePageInput) (Page, e
 	vars := map[string]any{
 		"content": input.Content, "description": input.Description, "editor": input.Editor,
 		"isPrivate": input.IsPrivate, "isPublished": input.IsPublished, "locale": input.Locale,
-		"path": trimLeadingSlash(input.Path), "tags": input.Tags, "title": input.Title,
+		"path": trimLeadingSlash(input.Path), "tags": tags, "title": input.Title,
 	}
 	if err := c.graphql(ctx, mutation, vars, &data); err != nil {
 		return Page{}, err
@@ -323,6 +335,9 @@ func (c *Client) UpdatePage(ctx context.Context, input UpdatePageInput) (Page, e
 	tags := []string(current.Tags)
 	if input.SetTags {
 		tags = input.Tags
+		if tags == nil {
+			tags = []string{}
+		}
 	}
 	isPublished := current.IsPublished
 	if input.IsPublished != nil {
@@ -393,27 +408,83 @@ func (c *Client) ListTags(ctx context.Context) ([]Tag, error) {
 }
 
 func (c *Client) ListAssets(ctx context.Context, folder string, limit int) ([]Asset, error) {
-	const query = `query { assets { list(folderId: 0, kind: ALL) { id filename ext kind mime fileSize createdAt updatedAt } } }`
-	var data struct {
-		Assets struct {
-			List []Asset `json:"list"`
-		} `json:"assets"`
-	}
-	if err := c.graphql(ctx, query, nil, &data); err != nil {
+	folder = normalizeAssetPath(folder)
+	assets, err := c.listAssetsRecursive(ctx, 0, "", folder, map[int]bool{})
+	if err != nil {
 		return nil, err
 	}
-	assets := data.Assets.List
-	filtered := assets[:0]
-	for _, asset := range assets {
-		if folder != "" && !strings.HasPrefix(asset.Filename, folder) {
+	sort.SliceStable(assets, func(i, j int) bool { return assets[i].ID < assets[j].ID })
+	if limit > 0 && len(assets) > limit {
+		assets = assets[:limit]
+	}
+	return assets, nil
+}
+
+func (c *Client) listAssetsRecursive(ctx context.Context, folderID int, folderPath, filter string, visited map[int]bool) ([]Asset, error) {
+	if visited[folderID] {
+		return nil, nil
+	}
+	visited[folderID] = true
+
+	const query = `query($folderID: Int!) { assets { list(folderId: $folderID, kind: ALL) { id filename ext kind mime fileSize createdAt updatedAt folder { id slug name } } folders(parentFolderId: $folderID) { id slug name } } }`
+	var data struct {
+		Assets struct {
+			List    []Asset       `json:"list"`
+			Folders []AssetFolder `json:"folders"`
+		} `json:"assets"`
+	}
+	if err := c.graphql(ctx, query, map[string]any{"folderID": folderID}, &data); err != nil {
+		return nil, err
+	}
+
+	assets := make([]Asset, 0, len(data.Assets.List))
+	for _, asset := range data.Assets.List {
+		asset.Filename = joinAssetPath(folderPath, asset.Filename)
+		if filter != "" && !assetPathInFolder(asset.Filename, filter) {
 			continue
 		}
-		filtered = append(filtered, asset)
+		assets = append(assets, asset)
 	}
-	if limit > 0 && len(filtered) > limit {
-		filtered = filtered[:limit]
+
+	for _, folder := range data.Assets.Folders {
+		childPath := joinAssetPath(folderPath, folder.Slug)
+		childAssets, err := c.listAssetsRecursive(ctx, folder.ID, childPath, filter, visited)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, childAssets...)
 	}
-	return filtered, nil
+	return assets, nil
+}
+
+func joinAssetPath(parent, child string) string {
+	parent = normalizeAssetPath(parent)
+	child = normalizeAssetPath(child)
+	if parent == "" {
+		return child
+	}
+	if child == "" {
+		return parent
+	}
+	return pathpkg.Join(parent, child)
+}
+
+func normalizeAssetPath(value string) string {
+	value = strings.TrimSpace(strings.Trim(value, "/"))
+	if value == "" {
+		return ""
+	}
+	value = pathpkg.Clean(value)
+	if value == "." {
+		return ""
+	}
+	return strings.Trim(value, "/")
+}
+
+func assetPathInFolder(filename, folder string) bool {
+	filename = normalizeAssetPath(filename)
+	folder = normalizeAssetPath(folder)
+	return filename == folder || strings.HasPrefix(filename, folder+"/")
 }
 
 func (c *Client) UploadAsset(ctx context.Context, filePath, rename string) (map[string]any, error) {
@@ -438,6 +509,14 @@ func (c *Client) UploadAsset(ctx context.Context, filePath, rename string) (map[
 	}
 	go func() {
 		defer file.Close()
+		meta, err := writer.CreateFormField("mediaUpload")
+		if err == nil {
+			_, err = meta.Write([]byte(`{"folderId":0}`))
+		}
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
 		part, err := writer.CreateFormFile("mediaUpload", name)
 		if err == nil {
 			_, err = io.Copy(part, file)
@@ -467,7 +546,7 @@ func (c *Client) UploadAsset(ctx context.Context, filePath, rename string) (map[
 	}
 	var out map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
+		return map[string]any{"ok": true}, nil
 	}
 	return out, nil
 }
@@ -525,23 +604,25 @@ func (c *Client) PageVersions(ctx context.Context, id int) ([]Version, error) {
 	if id < 1 {
 		return nil, fmt.Errorf("%w: invalid id %d", ErrValidation, id)
 	}
-	const query = `query($id: Int!) { pages { history(id: $id) { versionId versionDate authorName actionType } } }`
+	const query = `query($id: Int!) { pages { history(id: $id) { trail { versionId versionDate authorName actionType } total } } }`
 	var data struct {
 		Pages struct {
-			History []Version `json:"history"`
+			History struct {
+				Trail []Version `json:"trail"`
+			} `json:"history"`
 		} `json:"pages"`
 	}
 	if err := c.graphql(ctx, query, map[string]any{"id": id}, &data); err != nil {
 		return nil, err
 	}
-	return data.Pages.History, nil
+	return data.Pages.History.Trail, nil
 }
 
 func (c *Client) GetPageVersion(ctx context.Context, pageID, versionID int) (PageVersion, error) {
 	if pageID < 1 || versionID < 1 {
 		return PageVersion{}, fmt.Errorf("%w: invalid page or version id", ErrValidation)
 	}
-	const query = `query($pageID: Int!, $versionID: Int!) { pages { version(pageId: $pageID, versionId: $versionID) { versionId versionDate authorName actionType path title content } } }`
+	const query = `query($pageID: Int!, $versionID: Int!) { pages { version(pageId: $pageID, versionId: $versionID) { versionId versionDate authorName actionType: action path title content } } }`
 	var data struct {
 		Pages struct {
 			Version *PageVersion `json:"version"`
@@ -574,9 +655,9 @@ func (c *Client) RevertPage(ctx context.Context, pageID, versionID int) error {
 
 type mutationResult struct {
 	ResponseResult struct {
-		Succeeded bool   `json:"succeeded"`
-		ErrorCode string `json:"errorCode"`
-		Message   string `json:"message"`
+		Succeeded bool         `json:"succeeded"`
+		ErrorCode responseCode `json:"errorCode"`
+		Message   string       `json:"message"`
 	} `json:"responseResult"`
 	Page Page `json:"page"`
 }
@@ -590,7 +671,7 @@ func (r mutationResult) err(action string) error {
 		msg = "failed to " + action
 	}
 	if r.ResponseResult.ErrorCode != "" {
-		msg += " (" + r.ResponseResult.ErrorCode + ")"
+		msg += " (" + string(r.ResponseResult.ErrorCode) + ")"
 	}
 	return errors.New(msg)
 }
@@ -605,6 +686,39 @@ func (r mutationResult) pageOrError(action string) (Page, error) {
 func parsePositiveID(input string) (int, bool) {
 	id, err := strconv.Atoi(input)
 	return id, err == nil && id > 0 && strconv.Itoa(id) == input
+}
+
+type responseCode string
+
+func (c *responseCode) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*c = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*c = responseCode(text)
+		return nil
+	}
+	var number int
+	if err := json.Unmarshal(data, &number); err == nil {
+		*c = responseCode(strconv.Itoa(number))
+		return nil
+	}
+	return fmt.Errorf("unsupported response code shape: %s", string(data))
+}
+
+func isNotFoundGraphQLError(err error) bool {
+	var gqlErrs GraphQLErrors
+	if !errors.As(err, &gqlErrs) {
+		return false
+	}
+	for _, gqlErr := range gqlErrs {
+		if strings.Contains(strings.ToLower(gqlErr.Message), "does not exist") {
+			return true
+		}
+	}
+	return false
 }
 
 func validatePath(path string) error {

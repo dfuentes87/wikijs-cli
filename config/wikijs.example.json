@@ -4,9 +4,7 @@
   "defaultEditor": "markdown",
   "defaultLocale": "en",
   "autoSync": {
-    "enabled": false,
-    "path": "./sync",
-    "intervalHours": 24
+    "path": "./sync"
   },
   "backup": {
     "enabled": true,

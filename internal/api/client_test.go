@@ -77,12 +77,19 @@ func TestAuthenticationError(t *testing.T) {
 
 func TestUploadAsset(t *testing.T) {
 	var sawMultipart bool
+	var sawMetadata bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/u" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 			sawMultipart = true
+		}
+		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+			t.Fatal(err)
+		}
+		if values := r.MultipartForm.Value["mediaUpload"]; len(values) > 0 && strings.Contains(values[0], `"folderId":0`) {
+			sawMetadata = true
 		}
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	}))
@@ -97,8 +104,123 @@ func TestUploadAsset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sawMultipart || result["ok"] != true {
-		t.Fatalf("unexpected upload result: sawMultipart=%v result=%v", sawMultipart, result)
+	if !sawMultipart || !sawMetadata || result["ok"] != true {
+		t.Fatalf("unexpected upload result: sawMultipart=%v sawMetadata=%v result=%v", sawMultipart, sawMetadata, result)
+	}
+}
+
+func TestMutationResultDecodesNumericErrorCode(t *testing.T) {
+	var result mutationResult
+	if err := json.Unmarshal([]byte(`{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"},"page":{"id":1}}`), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ResponseResult.ErrorCode != "0" {
+		t.Fatalf("errorCode = %q", result.ResponseResult.ErrorCode)
+	}
+}
+
+func TestUpdatePageSendsEmptyTagsWhenClearingTags(t *testing.T) {
+	var sawTags bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Query     string         `json:"query"`
+			Variables map[string]any `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		page := map[string]any{"id": 1, "path": "home", "title": "Home", "content": "# Home", "tags": []map[string]string{}, "isPublished": true}
+		if strings.Contains(req.Query, "single(id") {
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"pages": map[string]any{"single": page}}})
+			return
+		}
+		tags, ok := req.Variables["tags"].([]any)
+		if ok && len(tags) == 0 {
+			sawTags = true
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"pages": map[string]any{"update": map[string]any{"responseResult": map[string]any{"succeeded": true}, "page": page}}}})
+	}))
+	defer server.Close()
+
+	client := New(config.Config{URL: server.URL, APIToken: "token", DefaultLocale: "en", DefaultEditor: "markdown"})
+	if _, err := client.UpdatePage(context.Background(), UpdatePageInput{ID: 1, SetTags: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !sawTags {
+		t.Fatal("expected empty tags slice in update variables")
+	}
+}
+
+func TestSearchPagesDecodesStringIDs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"pages": map[string]any{"search": map[string]any{
+				"results": []map[string]any{{"id": "42", "path": "home", "title": "Home", "locale": "en"}},
+			}}},
+		})
+	}))
+	defer server.Close()
+
+	client := New(config.Config{URL: server.URL, APIToken: "token", DefaultLocale: "en", DefaultEditor: "markdown"})
+	result, err := client.SearchPages(context.Background(), "home", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Results) != 1 || result.Results[0].ID != 42 {
+		t.Fatalf("unexpected search results: %+v", result.Results)
+	}
+}
+
+func TestListAssetsIncludesSubfolders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Variables map[string]int `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		switch req.Variables["folderID"] {
+		case 0:
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"assets": map[string]any{
+				"list":    []map[string]any{{"id": 1, "filename": "root.png", "kind": "IMAGE", "fileSize": 1}},
+				"folders": []map[string]any{{"id": 2, "slug": "uploads", "name": "Uploads"}},
+			}}})
+		case 2:
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"assets": map[string]any{
+				"list":    []map[string]any{{"id": 3, "filename": "nested.png", "kind": "IMAGE", "fileSize": 2}},
+				"folders": []map[string]any{{"id": 4, "slug": "icons", "name": "Icons"}},
+			}}})
+		case 4:
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"assets": map[string]any{
+				"list":    []map[string]any{{"id": 2, "filename": "deep.png", "kind": "IMAGE", "fileSize": 3}},
+				"folders": []map[string]any{},
+			}}})
+		default:
+			t.Fatalf("unexpected folderID %d", req.Variables["folderID"])
+		}
+	}))
+	defer server.Close()
+
+	client := New(config.Config{URL: server.URL, APIToken: "token", DefaultLocale: "en", DefaultEditor: "markdown"})
+	assets, err := client.ListAssets(context.Background(), "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		got = append(got, asset.Filename)
+	}
+	want := []string{"root.png", "uploads/icons/deep.png", "uploads/nested.png"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("asset filenames = %+v, want %+v", got, want)
+	}
+
+	filtered, err := client.ListAssets(context.Background(), "/uploads/icons", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].Filename != "uploads/icons/deep.png" {
+		t.Fatalf("filtered assets = %+v", filtered)
 	}
 }
 
@@ -178,9 +300,9 @@ func graphQLResponseFor(query string) map[string]any {
 	case strings.Contains(query, "deleteAsset"):
 		return map[string]any{"data": map[string]any{"assets": map[string]any{"deleteAsset": responseResult}}}
 	case strings.Contains(query, "history(id"):
-		return map[string]any{"data": map[string]any{"pages": map[string]any{"history": []map[string]any{{"versionId": 1, "versionDate": "2026-01-01T00:00:00Z"}}}}}
+		return map[string]any{"data": map[string]any{"pages": map[string]any{"history": map[string]any{"trail": []map[string]any{{"versionId": 1, "versionDate": "2026-01-01T00:00:00Z"}}, "total": 1}}}}
 	case strings.Contains(query, "version(pageId"):
-		return map[string]any{"data": map[string]any{"pages": map[string]any{"version": map[string]any{"versionId": 2, "content": "# Old", "title": "Home"}}}}
+		return map[string]any{"data": map[string]any{"pages": map[string]any{"version": map[string]any{"versionId": 2, "content": "# Old", "title": "Home", "actionType": "updated"}}}}
 	case strings.Contains(query, "restore("):
 		return map[string]any{"data": map[string]any{"pages": map[string]any{"restore": responseResult}}}
 	default:
