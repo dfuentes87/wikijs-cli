@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: go test ./...
+      - run: go vet ./...
+      - run: GOOS=linux GOARCH=amd64 go build -trimpath -o /tmp/wikijs-linux-amd64 ./cmd/wikijs
+      - run: GOOS=darwin GOARCH=arm64 go build -trimpath -o /tmp/wikijs-darwin-arm64 ./cmd/wikijs
+      - run: GOOS=windows GOARCH=amd64 go build -trimpath -o /tmp/wikijs-windows-amd64.exe ./cmd/wikijs
