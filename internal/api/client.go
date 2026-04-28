@@ -537,6 +537,25 @@ func (c *Client) PageVersions(ctx context.Context, id int) ([]Version, error) {
 	return data.Pages.History, nil
 }
 
+func (c *Client) GetPageVersion(ctx context.Context, pageID, versionID int) (PageVersion, error) {
+	if pageID < 1 || versionID < 1 {
+		return PageVersion{}, fmt.Errorf("%w: invalid page or version id", ErrValidation)
+	}
+	const query = `query($pageID: Int!, $versionID: Int!) { pages { version(pageId: $pageID, versionId: $versionID) { versionId versionDate authorName actionType path title content } } }`
+	var data struct {
+		Pages struct {
+			Version *PageVersion `json:"version"`
+		} `json:"pages"`
+	}
+	if err := c.graphql(ctx, query, map[string]any{"pageID": pageID, "versionID": versionID}, &data); err != nil {
+		return PageVersion{}, err
+	}
+	if data.Pages.Version == nil {
+		return PageVersion{}, fmt.Errorf("%w: page %d version %d", ErrNotFound, pageID, versionID)
+	}
+	return *data.Pages.Version, nil
+}
+
 func (c *Client) RevertPage(ctx context.Context, pageID, versionID int) error {
 	if pageID < 1 || versionID < 1 {
 		return fmt.Errorf("%w: invalid page or version id", ErrValidation)

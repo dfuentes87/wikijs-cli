@@ -35,6 +35,7 @@ type WikiClient interface {
 	Health(context.Context) (api.SystemInfo, error)
 	Stats(context.Context) (api.Stats, error)
 	PageVersions(context.Context, int) ([]api.Version, error)
+	GetPageVersion(context.Context, int, int) (api.PageVersion, error)
 	RevertPage(context.Context, int, int) error
 }
 
@@ -85,11 +86,16 @@ func newRootCommand(a *app) *cobra.Command {
 		a.statsCommand(),
 		a.versionsCommand(),
 		a.revertCommand(),
-		a.assetsCommand(),
+		a.assetCommand(),
 		a.treeCommand(),
 		a.lintCommand(),
 		a.backupCommand(),
 		a.restoreBackupCommand(),
+		a.exportCommand(),
+		a.checkLinksCommand(),
+		a.diffCommand(),
+		a.cloneCommand(),
+		a.validateCommand(),
 		a.bulkCreateCommand(),
 		a.bulkUpdateCommand(),
 		a.templateCommand(),
@@ -482,8 +488,8 @@ func (a *app) revertCommand() *cobra.Command {
 	return cmd
 }
 
-func (a *app) assetsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "assets", Short: "Manage assets"}
+func (a *app) assetCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "asset", Short: "Manage assets"}
 	var folder string
 	var limit int
 	list := &cobra.Command{Use: "list", Short: "List assets", RunE: func(cmd *cobra.Command, args []string) error {

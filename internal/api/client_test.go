@@ -134,6 +134,7 @@ func TestGraphQLOperationsUseVariables(t *testing.T) {
 	must(client.ListAssets(ctx, "", 10))(t)
 	mustErr(client.DeleteAsset(ctx, 7))(t)
 	must(client.PageVersions(ctx, 1))(t)
+	must(client.GetPageVersion(ctx, 1, 2))(t)
 	mustErr(client.RevertPage(ctx, 1, 2))(t)
 
 	assertRequestVariables(t, requests, "search(query: $query)", map[string]any{"query": "home"})
@@ -144,6 +145,7 @@ func TestGraphQLOperationsUseVariables(t *testing.T) {
 	assertRequestVariables(t, requests, "delete(id", map[string]any{"id": float64(1)})
 	assertRequestVariables(t, requests, "deleteAsset", map[string]any{"id": float64(7)})
 	assertRequestVariables(t, requests, "history(id", map[string]any{"id": float64(1)})
+	assertRequestVariables(t, requests, "version(pageId", map[string]any{"pageID": float64(1), "versionID": float64(2)})
 	assertRequestVariables(t, requests, "restore(pageId", map[string]any{"pageID": float64(1), "versionID": float64(2)})
 }
 
@@ -177,6 +179,8 @@ func graphQLResponseFor(query string) map[string]any {
 		return map[string]any{"data": map[string]any{"assets": map[string]any{"deleteAsset": responseResult}}}
 	case strings.Contains(query, "history(id"):
 		return map[string]any{"data": map[string]any{"pages": map[string]any{"history": []map[string]any{{"versionId": 1, "versionDate": "2026-01-01T00:00:00Z"}}}}}
+	case strings.Contains(query, "version(pageId"):
+		return map[string]any{"data": map[string]any{"pages": map[string]any{"version": map[string]any{"versionId": 2, "content": "# Old", "title": "Home"}}}}
 	case strings.Contains(query, "restore("):
 		return map[string]any{"data": map[string]any{"pages": map[string]any{"restore": responseResult}}}
 	default:
