@@ -62,6 +62,9 @@ func newRootCommand(a *app) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	cmd.SetOut(a.out)
+	cmd.SetErr(a.errOut)
+	cmd.SetIn(a.in)
 	cmd.PersistentFlags().StringVar(&a.configPath, "config", "", "config file path")
 	cmd.PersistentFlags().StringVarP(&a.format, "format", "f", "table", "output format: table or json")
 	cmd.PersistentFlags().BoolVar(&a.verbose, "verbose", false, "enable verbose output")
@@ -85,6 +88,13 @@ func newRootCommand(a *app) *cobra.Command {
 		a.assetsCommand(),
 		a.treeCommand(),
 		a.lintCommand(),
+		a.backupCommand(),
+		a.restoreBackupCommand(),
+		a.bulkCreateCommand(),
+		a.bulkUpdateCommand(),
+		a.templateCommand(),
+		a.replaceCommand(),
+		a.shellCommand(),
 	)
 	return cmd
 }
@@ -239,12 +249,25 @@ func (a *app) getCommand() *cobra.Command {
 }
 
 func (a *app) createCommand() *cobra.Command {
-	var file, content, tags, locale, editor, description string
+	var file, content, tags, locale, editor, description, templateName string
 	var stdin, draft, private bool
 	cmd := &cobra.Command{Use: "create <path> <title>", Short: "Create a page", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		body, err := readContent(a.in, file, content, stdin)
 		if err != nil {
 			return err
+		}
+		if templateName != "" {
+			rendered, err := a.renderTemplate(templateName, map[string]string{
+				"title": args[1],
+				"path":  strings.TrimPrefix(args[0], "/"),
+				"date":  time.Now().Format("2006-01-02"),
+			})
+			if err != nil {
+				return err
+			}
+			if body == "" {
+				body = rendered
+			}
 		}
 		client, err := a.getClient()
 		if err != nil {
@@ -260,6 +283,7 @@ func (a *app) createCommand() *cobra.Command {
 	cmd.Flags().StringVar(&content, "content", "", "inline content")
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "read content from stdin")
 	cmd.Flags().StringVar(&tags, "tag", "", "comma-separated tags")
+	cmd.Flags().StringVar(&templateName, "template", "", "template name")
 	cmd.Flags().StringVar(&locale, "locale", "", "page locale")
 	cmd.Flags().StringVar(&editor, "editor", "", "editor type")
 	cmd.Flags().StringVar(&description, "description", "", "page description")

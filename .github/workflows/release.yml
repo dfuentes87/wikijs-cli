@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Test
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Build release artifacts
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-X github.com/dfuentes87/wikijs-cli/internal/cli.Version=${VERSION} -X github.com/dfuentes87/wikijs-cli/internal/cli.Commit=${COMMIT} -X github.com/dfuentes87/wikijs-cli/internal/cli.Date=${DATE}"
+
+          build() {
+            local goos="$1"
+            local goarch="$2"
+            local ext="$3"
+            local name="wikijs_${goos}_${goarch}"
+            local binary="wikijs${ext}"
+            local workdir="dist/${name}"
+
+            mkdir -p "${workdir}"
+            GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -ldflags "${LDFLAGS}" -o "${workdir}/${binary}" ./cmd/wikijs
+
+            if [ "${goos}" = "windows" ]; then
+              (cd dist && zip -q "${name}.zip" "${name}/${binary}")
+            else
+              (cd dist && tar -czf "${name}.tar.gz" "${name}/${binary}")
+            fi
+            rm -rf "${workdir}"
+          }
+
+          build linux amd64 ""
+          build linux arm64 ""
+          build darwin amd64 ""
+          build darwin arm64 ""
+          build windows amd64 ".exe"
+
+          (cd dist && sha256sum * > checksums.txt)
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt

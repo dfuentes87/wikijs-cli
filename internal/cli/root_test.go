@@ -129,3 +129,27 @@ func TestVersionJSON(t *testing.T) {
 		t.Fatalf("version missing: %+v", body)
 	}
 }
+
+func TestCompletionCommandGeneratesScriptWithoutConfig(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("")})
+	cmd.SetArgs([]string{"completion", "bash"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "bash completion") || !strings.Contains(out.String(), "wikijs") {
+		t.Fatalf("unexpected completion output: %s", out.String())
+	}
+}
+
+func TestShellRunsCommands(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("version\nexit\n"), client: fakeClient{}})
+	cmd.SetArgs([]string{"shell"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "wikijs dev") {
+		t.Fatalf("shell output = %q", out.String())
+	}
+}

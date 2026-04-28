@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,5 +55,16 @@ func TestLoadMissingConfig(t *testing.T) {
 	_, _, err := Load(filepath.Join(t.TempDir(), "missing.json"))
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestLoadInvalidConfigMissingField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"apiToken":"token"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := Load(path)
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("expected ErrInvalid, got %v", err)
 	}
 }

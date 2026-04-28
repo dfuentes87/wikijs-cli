@@ -11,7 +11,10 @@ import (
 	"strings"
 )
 
-var ErrMissing = errors.New("config file not found")
+var (
+	ErrMissing = errors.New("config file not found")
+	ErrInvalid = errors.New("invalid config")
+)
 
 type Config struct {
 	URL           string       `json:"url"`
@@ -73,7 +76,7 @@ func Load(path string) (Config, string, error) {
 		return cfg, path, err
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return cfg, path, fmt.Errorf("parse config: %w", err)
+		return cfg, path, fmt.Errorf("%w: parse config: %v", ErrInvalid, err)
 	}
 	applyEnv(&cfg)
 	if err := finalize(&cfg); err != nil {
@@ -91,13 +94,13 @@ func finalize(cfg *Config) error {
 	}
 	cfg.URL = strings.TrimRight(cfg.URL, "/")
 	if cfg.URL == "" {
-		return errors.New(`missing "url" in config`)
+		return fmt.Errorf(`%w: missing "url"`, ErrInvalid)
 	}
 	if cfg.APIToken == "" {
-		return errors.New(`missing "apiToken" in config`)
+		return fmt.Errorf(`%w: missing "apiToken"`, ErrInvalid)
 	}
 	if _, err := url.ParseRequestURI(cfg.URL); err != nil {
-		return fmt.Errorf("invalid url: %w", err)
+		return fmt.Errorf("%w: invalid url: %v", ErrInvalid, err)
 	}
 	cfg.AutoSync.Path = expandPath(cfg.AutoSync.Path)
 	cfg.Backup.Path = expandPath(cfg.Backup.Path)
