@@ -2,8 +2,7 @@
 
 A Go command-line client for Wiki.js 2.x.
 
-This rewrite targets Go 1.26 and implements the core CLI surface for pages,
-tags, assets, stats, page versions, tree rendering, and Markdown linting.
+Forked from [hopyky/wikijs-cli](https://github.com/hopyky/wikijs-cli) which was written in JavaScript.
 
 ## Install
 
@@ -16,14 +15,6 @@ For local development:
 ```bash
 go build ./cmd/wikijs
 go test ./...
-```
-
-Release-style build with version metadata:
-
-```bash
-go build -trimpath \
-  -ldflags "-X github.com/dfuentes87/wikijs-cli/internal/cli.Version=1.0.0 -X github.com/dfuentes87/wikijs-cli/internal/cli.Commit=$(git rev-parse --short HEAD) -X github.com/dfuentes87/wikijs-cli/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  ./cmd/wikijs
 ```
 
 Typical release artifact names:
@@ -117,7 +108,6 @@ wikijs lint ./document.md
 wikijs lint ./document.md --format json
 ```
 
-Destructive commands require typing `yes` unless `--force` is supplied.
 When `--format json` is used, successful mutating commands return a structured
 object with `success` and `action` fields.
 
@@ -138,8 +128,6 @@ GOOS=linux GOARCH=amd64 go build -o /tmp/wikijs-linux-amd64 ./cmd/wikijs
 GOOS=darwin GOARCH=arm64 go build -o /tmp/wikijs-darwin-arm64 ./cmd/wikijs
 GOOS=windows GOARCH=amd64 go build -o /tmp/wikijs-windows-amd64.exe ./cmd/wikijs
 ```
-
-See `docs/destructive-operations.md` before changing delete or revert behavior.
 
 ## Roadmap
 
