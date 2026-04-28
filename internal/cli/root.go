@@ -35,6 +35,7 @@ type WikiClient interface {
 	Health(context.Context) (api.SystemInfo, error)
 	Stats(context.Context) (api.Stats, error)
 	PageVersions(context.Context, int) ([]api.Version, error)
+	GetPageVersion(context.Context, int, int) (api.PageVersion, error)
 	RevertPage(context.Context, int, int) error
 }
 
@@ -82,14 +83,23 @@ func newRootCommand(a *app) *cobra.Command {
 		a.moveCommand(),
 		a.deleteCommand(),
 		a.tagsCommand(),
+		a.tagCommand(),
 		a.statsCommand(),
+		a.infoCommand(),
+		a.grepCommand(),
 		a.versionsCommand(),
 		a.revertCommand(),
-		a.assetsCommand(),
+		a.assetCommand(),
 		a.treeCommand(),
 		a.lintCommand(),
 		a.backupCommand(),
 		a.restoreBackupCommand(),
+		a.exportCommand(),
+		a.syncCommand(),
+		a.checkLinksCommand(),
+		a.diffCommand(),
+		a.cloneCommand(),
+		a.validateCommand(),
 		a.bulkCreateCommand(),
 		a.bulkUpdateCommand(),
 		a.templateCommand(),
@@ -415,20 +425,6 @@ func (a *app) tagsCommand() *cobra.Command {
 	}}
 }
 
-func (a *app) statsCommand() *cobra.Command {
-	return &cobra.Command{Use: "stats", Short: "Show page statistics", RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := a.getClient()
-		if err != nil {
-			return err
-		}
-		stats, err := client.Stats(cmd.Context())
-		if err != nil {
-			return err
-		}
-		return a.print(stats, []string{"Metric", "Value"}, [][]string{{"Total pages", strconv.Itoa(stats.TotalPages)}, {"Published", strconv.Itoa(stats.PublishedPages)}, {"Drafts", strconv.Itoa(stats.DraftPages)}})
-	}}
-}
-
 func (a *app) versionsCommand() *cobra.Command {
 	return &cobra.Command{Use: "versions <id>", Short: "List page versions", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := parseID(args[0])
@@ -482,8 +478,8 @@ func (a *app) revertCommand() *cobra.Command {
 	return cmd
 }
 
-func (a *app) assetsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "assets", Short: "Manage assets"}
+func (a *app) assetCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "asset", Short: "Manage assets"}
 	var folder string
 	var limit int
 	list := &cobra.Command{Use: "list", Short: "List assets", RunE: func(cmd *cobra.Command, args []string) error {

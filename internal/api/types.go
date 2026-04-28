@@ -95,6 +95,16 @@ type Version struct {
 	ActionType  string `json:"actionType,omitempty"`
 }
 
+type PageVersion struct {
+	VersionID   int    `json:"versionId"`
+	VersionDate string `json:"versionDate,omitempty"`
+	AuthorName  string `json:"authorName,omitempty"`
+	ActionType  string `json:"actionType,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Content     string `json:"content,omitempty"`
+}
+
 type CreatePageInput struct {
 	Path        string
 	Title       string
