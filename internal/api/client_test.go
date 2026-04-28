@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hopyky/wikijs-cli/internal/config"
+	"github.com/dfuentes87/wikijs-cli/internal/config"
 )
 
 func TestListPagesSendsAuthAndDecodes(t *testing.T) {

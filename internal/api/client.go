@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hopyky/wikijs-cli/internal/config"
+	"github.com/dfuentes87/wikijs-cli/internal/config"
 )
 
 var (

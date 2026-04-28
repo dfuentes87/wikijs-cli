@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hopyky/wikijs-cli/internal/api"
+	"github.com/dfuentes87/wikijs-cli/internal/api"
 )
 
 func TestRender(t *testing.T) {

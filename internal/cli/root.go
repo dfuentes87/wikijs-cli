@@ -13,11 +13,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hopyky/wikijs-cli/internal/api"
-	"github.com/hopyky/wikijs-cli/internal/config"
-	"github.com/hopyky/wikijs-cli/internal/markdown"
-	"github.com/hopyky/wikijs-cli/internal/output"
-	"github.com/hopyky/wikijs-cli/internal/tree"
+	"github.com/dfuentes87/wikijs-cli/internal/api"
+	"github.com/dfuentes87/wikijs-cli/internal/config"
+	"github.com/dfuentes87/wikijs-cli/internal/markdown"
+	"github.com/dfuentes87/wikijs-cli/internal/output"
+	"github.com/dfuentes87/wikijs-cli/internal/tree"
 )
 
 type WikiClient interface {

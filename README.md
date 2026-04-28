@@ -8,7 +8,7 @@ tags, assets, stats, page versions, tree rendering, and Markdown linting.
 ## Install
 
 ```bash
-go install github.com/hopyky/wikijs-cli/cmd/wikijs@latest
+go install github.com/dfuentes87/wikijs-cli/cmd/wikijs@latest
 ```
 
 For local development:
@@ -22,7 +22,7 @@ Release-style build with version metadata:
 
 ```bash
 go build -trimpath \
-  -ldflags "-X github.com/hopyky/wikijs-cli/internal/cli.Version=1.0.0 -X github.com/hopyky/wikijs-cli/internal/cli.Commit=$(git rev-parse --short HEAD) -X github.com/hopyky/wikijs-cli/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -ldflags "-X github.com/dfuentes87/wikijs-cli/internal/cli.Version=1.0.0 -X github.com/dfuentes87/wikijs-cli/internal/cli.Commit=$(git rev-parse --short HEAD) -X github.com/dfuentes87/wikijs-cli/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   ./cmd/wikijs
 ```
 

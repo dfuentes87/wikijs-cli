@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/hopyky/wikijs-cli/internal/cli"
+	"github.com/dfuentes87/wikijs-cli/internal/cli"
 )
 
 func main() {
