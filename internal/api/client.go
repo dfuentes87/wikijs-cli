@@ -15,13 +15,29 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hopyky/wikijs-cli/internal/config"
+	"github.com/dfuentes87/wikijs-cli/internal/config"
 )
 
 var (
 	ErrNotFound   = errors.New("not found")
 	ErrValidation = errors.New("validation failed")
+	ErrAuth       = errors.New("authentication failed")
 )
+
+type AuthError struct {
+	Status string
+}
+
+func (e AuthError) Error() string {
+	if e.Status == "" {
+		return ErrAuth.Error()
+	}
+	return ErrAuth.Error() + ": " + e.Status
+}
+
+func (e AuthError) Unwrap() error {
+	return ErrAuth
+}
 
 type Client struct {
 	baseURL       string
@@ -115,7 +131,7 @@ func (c *Client) graphql(ctx context.Context, query string, variables map[string
 	defer resp.Body.Close()
 	c.logf("POST /graphql -> %s", resp.Status)
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("authentication failed: %s", resp.Status)
+		return AuthError{Status: resp.Status}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))

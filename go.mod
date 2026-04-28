@@ -1,4 +1,4 @@
-module github.com/hopyky/wikijs-cli
+module github.com/dfuentes87/wikijs-cli
 
 go 1.26
 

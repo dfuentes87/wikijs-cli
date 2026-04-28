@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hopyky/wikijs-cli/internal/config"
+	"github.com/dfuentes87/wikijs-cli/internal/config"
 )
 
 func TestListPagesSendsAuthAndDecodes(t *testing.T) {
@@ -50,6 +51,27 @@ func TestGraphQLError(t *testing.T) {
 	_, err := client.Health(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("expected graphql error, got %v", err)
+	}
+}
+
+func TestAuthenticationError(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, http.StatusText(status), status)
+			}))
+			defer server.Close()
+
+			client := New(config.Config{URL: server.URL, APIToken: "token", DefaultLocale: "en", DefaultEditor: "markdown"})
+			_, err := client.Health(context.Background())
+			var authErr AuthError
+			if !errors.As(err, &authErr) {
+				t.Fatalf("expected AuthError, got %T %v", err, err)
+			}
+			if authErr.Status == "" {
+				t.Fatal("expected status on auth error")
+			}
+		})
 	}
 }
 

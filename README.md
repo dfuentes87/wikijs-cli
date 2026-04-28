@@ -2,13 +2,12 @@
 
 A Go command-line client for Wiki.js 2.x.
 
-This rewrite targets Go 1.26 and implements the core CLI surface for pages,
-tags, assets, stats, page versions, tree rendering, and Markdown linting.
+Forked from [hopyky/wikijs-cli](https://github.com/hopyky/wikijs-cli) which was written in JavaScript.
 
 ## Install
 
 ```bash
-go install github.com/hopyky/wikijs-cli/cmd/wikijs@latest
+go install github.com/dfuentes87/wikijs-cli/cmd/wikijs@latest
 ```
 
 For local development:
@@ -16,14 +15,6 @@ For local development:
 ```bash
 go build ./cmd/wikijs
 go test ./...
-```
-
-Release-style build with version metadata:
-
-```bash
-go build -trimpath \
-  -ldflags "-X github.com/hopyky/wikijs-cli/internal/cli.Version=1.0.0 -X github.com/hopyky/wikijs-cli/internal/cli.Commit=$(git rev-parse --short HEAD) -X github.com/hopyky/wikijs-cli/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  ./cmd/wikijs
 ```
 
 Typical release artifact names:
@@ -103,6 +94,28 @@ wikijs versions 1
 wikijs revert 1 5
 wikijs revert 1 5 --force
 
+wikijs backup --output backup.json
+wikijs backup --output - --format json
+wikijs restore-backup backup.json --dry-run
+wikijs restore-backup backup.json --skip-existing
+wikijs restore-backup backup.json --force
+
+wikijs bulk-create ./pages --path-prefix /docs --tag imported
+wikijs bulk-create ./pages --dry-run
+wikijs bulk-update ./pages --path-prefix /docs
+wikijs bulk-update ./pages --skip-missing
+
+wikijs template list
+wikijs template create doc --content "# {{title}}\n\nCreated: {{date}}"
+wikijs template create doc --file ./template.md
+wikijs template show doc
+wikijs template delete doc --force
+wikijs create /docs/new "New Page" --template doc
+
+wikijs replace "old term" "new term" --dry-run
+wikijs replace "old term" "new term" --path /docs --force
+wikijs replace "old[0-9]+" "new" --regex --case-sensitive --force
+
 wikijs assets list
 wikijs assets list --folder /uploads --limit 100
 wikijs assets upload ./image.png
@@ -115,11 +128,25 @@ wikijs tree --locale en
 
 wikijs lint ./document.md
 wikijs lint ./document.md --format json
+
+wikijs shell
 ```
 
-Destructive commands require typing `yes` unless `--force` is supplied.
 When `--format json` is used, successful mutating commands return a structured
 object with `success` and `action` fields.
+
+## Shell Completion
+
+Completion scripts are provided by Cobra:
+
+```bash
+wikijs completion bash
+wikijs completion zsh
+wikijs completion fish
+wikijs completion powershell
+```
+
+Use `wikijs completion --help` for shell-specific installation instructions.
 
 ## API Compatibility
 
@@ -138,22 +165,6 @@ GOOS=linux GOARCH=amd64 go build -o /tmp/wikijs-linux-amd64 ./cmd/wikijs
 GOOS=darwin GOARCH=arm64 go build -o /tmp/wikijs-darwin-arm64 ./cmd/wikijs
 GOOS=windows GOARCH=amd64 go build -o /tmp/wikijs-windows-amd64.exe ./cmd/wikijs
 ```
-
-See `docs/destructive-operations.md` before changing delete or revert behavior.
-
-## Roadmap
-
-The former README described a broader future CLI. These features are not in the
-first Go milestone yet:
-
-- backup and restore
-- bulk import/export/sync
-- templates
-- duplicate detection
-- full search and replace
-- offline mode
-- interactive shell
-- shell completion customization
 
 ## License
 

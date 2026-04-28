@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/hopyky/wikijs-cli/internal/cli"
+	"github.com/dfuentes87/wikijs-cli/internal/cli"
 )
 
 func main() {
@@ -15,7 +14,7 @@ func main() {
 	defer stop()
 
 	if err := cli.NewRootCommand().ExecuteContext(ctx); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		cli.PrintError(os.Stderr, err)
 		os.Exit(1)
 	}
 }
