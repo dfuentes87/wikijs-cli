@@ -31,7 +31,7 @@ func (a *app) replaceCommand() *cobra.Command {
 		}
 		summary := operationSummary{}
 		for i, listed := range pages {
-			a.progress("Replacing", i+1, len(pages))
+			a.progress("Scanning", i+1, len(pages))
 			if pathPrefix != "" && !strings.HasPrefix(strings.Trim(listed.Path, "/"), strings.Trim(pathPrefix, "/")) {
 				continue
 			}

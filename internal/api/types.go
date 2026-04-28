@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 )
 
 type Page struct {
@@ -20,6 +21,20 @@ type Page struct {
 	IsPublished bool   `json:"isPublished"`
 	IsPrivate   bool   `json:"isPrivate,omitempty"`
 	Children    []Page `json:"children,omitempty"`
+}
+
+func (p *Page) UnmarshalJSON(data []byte) error {
+	type page Page
+	var decoded struct {
+		ID flexibleInt `json:"id"`
+		*page
+	}
+	decoded.page = (*page)(p)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	p.ID = int(decoded.ID)
+	return nil
 }
 
 type Tags []string
@@ -61,14 +76,21 @@ type Tag struct {
 }
 
 type Asset struct {
-	ID        int    `json:"id"`
-	Filename  string `json:"filename"`
-	Ext       string `json:"ext,omitempty"`
-	Kind      string `json:"kind,omitempty"`
-	Mime      string `json:"mime,omitempty"`
-	FileSize  int64  `json:"fileSize,omitempty"`
-	CreatedAt string `json:"createdAt,omitempty"`
-	UpdatedAt string `json:"updatedAt,omitempty"`
+	ID        int          `json:"id"`
+	Filename  string       `json:"filename"`
+	Ext       string       `json:"ext,omitempty"`
+	Kind      string       `json:"kind,omitempty"`
+	Mime      string       `json:"mime,omitempty"`
+	FileSize  int64        `json:"fileSize,omitempty"`
+	CreatedAt string       `json:"createdAt,omitempty"`
+	UpdatedAt string       `json:"updatedAt,omitempty"`
+	Folder    *AssetFolder `json:"folder,omitempty"`
+}
+
+type AssetFolder struct {
+	ID   int    `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name,omitempty"`
 }
 
 type SystemInfo struct {
@@ -125,4 +147,28 @@ type UpdatePageInput struct {
 	Tags        []string
 	SetTags     bool
 	IsPublished *bool
+}
+
+type flexibleInt int
+
+func (i *flexibleInt) UnmarshalJSON(data []byte) error {
+	var number int
+	if err := json.Unmarshal(data, &number); err == nil {
+		*i = flexibleInt(number)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	if text == "" {
+		*i = 0
+		return nil
+	}
+	parsed, err := strconv.Atoi(text)
+	if err != nil {
+		return fmt.Errorf("invalid integer %q", text)
+	}
+	*i = flexibleInt(parsed)
+	return nil
 }

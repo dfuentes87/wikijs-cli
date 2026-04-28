@@ -120,19 +120,12 @@ func TestSuccessCommandsEmitJSON(t *testing.T) {
 	}
 }
 
-func TestVersionJSON(t *testing.T) {
+func TestVersionCommandUnavailable(t *testing.T) {
 	var out, errOut bytes.Buffer
 	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
-	cmd.SetArgs([]string{"--format", "json", "version"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	var body map[string]string
-	if err := json.Unmarshal(out.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["version"] == "" {
-		t.Fatalf("version missing: %+v", body)
+	cmd.SetArgs([]string{"version"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected version command to be unavailable")
 	}
 }
 
@@ -150,12 +143,12 @@ func TestCompletionCommandGeneratesScriptWithoutConfig(t *testing.T) {
 
 func TestShellRunsCommands(t *testing.T) {
 	var out, errOut bytes.Buffer
-	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("version\nexit\n"), client: fakeClient{}})
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("list\nexit\n"), client: fakeClient{}})
 	cmd.SetArgs([]string{"shell"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "wikijs dev") {
+	if !strings.Contains(out.String(), "Home") {
 		t.Fatalf("shell output = %q", out.String())
 	}
 }
@@ -454,6 +447,9 @@ func TestCheckLinksReportsBrokenInternalLinks(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "/missing") {
 		t.Fatalf("check-links output = %q", out.String())
+	}
+	if !strings.HasSuffix(errOut.String(), "\n\n") {
+		t.Fatalf("check-links error output = %q, want blank line", errOut.String())
 	}
 }
 

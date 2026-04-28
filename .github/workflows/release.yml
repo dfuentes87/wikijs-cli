@@ -27,14 +27,9 @@ jobs:
           go vet ./...
 
       - name: Build release artifacts
-        env:
-          VERSION: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          LDFLAGS="-X github.com/dfuentes87/wikijs-cli/internal/cli.Version=${VERSION} -X github.com/dfuentes87/wikijs-cli/internal/cli.Commit=${COMMIT} -X github.com/dfuentes87/wikijs-cli/internal/cli.Date=${DATE}"
 
           build() {
             local goos="$1"
@@ -45,7 +40,7 @@ jobs:
             local workdir="dist/${name}"
 
             mkdir -p "${workdir}"
-            GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -ldflags "${LDFLAGS}" -o "${workdir}/${binary}" ./cmd/wikijs
+            GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -o "${workdir}/${binary}" ./cmd/wikijs
 
             if [ "${goos}" = "windows" ]; then
               (cd dist && zip -q "${name}.zip" "${name}/${binary}")

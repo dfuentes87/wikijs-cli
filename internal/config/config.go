@@ -26,9 +26,7 @@ type Config struct {
 }
 
 type AutoSync struct {
-	Enabled       bool   `json:"enabled"`
-	Path          string `json:"path"`
-	IntervalHours int    `json:"intervalHours"`
+	Path string `json:"path"`
 }
 
 type BackupConfig struct {

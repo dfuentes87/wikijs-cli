@@ -73,7 +73,6 @@ func newRootCommand(a *app) *cobra.Command {
 	cmd.PersistentFlags().IntVar(&a.rateLimit, "rate-limit", 0, "delay between API requests in milliseconds")
 
 	cmd.AddCommand(
-		a.versionCommand(),
 		a.healthCommand(),
 		a.listCommand(),
 		a.searchCommand(),
@@ -152,23 +151,6 @@ type successResult struct {
 	VersionID int    `json:"versionId,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Result    any    `json:"result,omitempty"`
-}
-
-var (
-	Version = "dev"
-	Commit  = "none"
-	Date    = "unknown"
-)
-
-func (a *app) versionCommand() *cobra.Command {
-	return &cobra.Command{Use: "version", Short: "Print version information", RunE: func(cmd *cobra.Command, args []string) error {
-		data := map[string]string{"version": Version, "commit": Commit, "date": Date}
-		if a.format == "json" {
-			return output.JSON(a.out, data)
-		}
-		_, err := fmt.Fprintf(a.out, "wikijs %s (%s, %s)\n", Version, Commit, Date)
-		return err
-	}}
 }
 
 func (a *app) healthCommand() *cobra.Command {

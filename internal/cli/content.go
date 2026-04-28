@@ -84,6 +84,9 @@ func (a *app) checkLinksCommand() *cobra.Command {
 			}
 		}
 		if !result.Valid {
+			if a.format != "json" {
+				fmt.Fprintln(a.errOut)
+			}
 			return errors.New("broken internal links found")
 		}
 		return nil
