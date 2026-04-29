@@ -39,10 +39,25 @@ func FormatError(err error) string {
 
 	var gqlErrs api.GraphQLErrors
 	if errors.As(err, &gqlErrs) {
+		if graphQLErrorsAreForbidden(gqlErrs) {
+			return "Authentication failed: Wiki.js rejected the API token or permissions."
+		}
 		return "GraphQL error: " + gqlErrs.Error()
 	}
 
 	return "Error: " + err.Error()
+}
+
+func graphQLErrorsAreForbidden(errs api.GraphQLErrors) bool {
+	if len(errs) == 0 {
+		return false
+	}
+	for _, err := range errs {
+		if !strings.EqualFold(strings.TrimSpace(err.Message), "forbidden") {
+			return false
+		}
+	}
+	return true
 }
 
 func trimSentinel(message, prefix string) string {

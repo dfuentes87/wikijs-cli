@@ -56,3 +56,11 @@ func TestFormatError(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatErrorTreatsForbiddenGraphQLErrorsAsAuth(t *testing.T) {
+	err := api.GraphQLErrors{{Message: "Forbidden"}, {Message: "Forbidden"}}
+	got := FormatError(err)
+	if !strings.Contains(got, "Authentication failed") {
+		t.Fatalf("FormatError() = %q", got)
+	}
+}
