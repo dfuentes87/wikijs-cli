@@ -641,7 +641,7 @@ func (a *app) treeCommand() *cobra.Command {
 }
 
 func (a *app) lintCommand() *cobra.Command {
-	return &cobra.Command{Use: "lint <file>", Short: "Lint a Markdown file", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "lint <file>", Short: "Lint a local Markdown file", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		data, err := os.ReadFile(args[0])
 		if err != nil {
 			return err

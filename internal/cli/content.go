@@ -75,12 +75,16 @@ func (a *app) checkLinksCommand() *cobra.Command {
 		} else {
 			rows := make([][]string, 0, len(result.Broken))
 			for _, item := range result.Broken {
-				rows = append(rows, []string{item.PagePath, strconv.Itoa(item.Line), item.Target, item.Resolved})
+				rows = append(rows, []string{item.PagePath, strconv.Itoa(item.Line), missingTargetDetail("missing-page", item.Resolved, item.Target)})
 			}
 			if len(rows) == 0 {
+				fmt.Fprintln(a.out)
 				fmt.Fprintf(a.out, "Checked %d pages; no broken internal links found\n", result.Checked)
-			} else if err := output.Table(a.out, []string{"Page", "Line", "Target", "Resolved"}, rows); err != nil {
-				return err
+			} else {
+				fmt.Fprintln(a.out)
+				if err := output.Table(a.out, []string{"Page", "Line", "Problem"}, rows); err != nil {
+					return err
+				}
 			}
 		}
 		if !result.Valid {
@@ -139,6 +143,9 @@ func (a *app) validateCommand() *cobra.Command {
 			return err
 		}
 		if !result.Valid {
+			if a.format != "json" {
+				fmt.Fprintln(a.errOut)
+			}
 			return errors.New("validation failed")
 		}
 		return nil
@@ -356,13 +363,7 @@ func hasWikiPathPrefix(pagePath, prefix string) bool {
 }
 
 func printValidationResult(w io.Writer, result validationResult, colorEnabled bool) error {
-	status := "Validation failed"
-	statusColor := output.Red
-	if result.Valid {
-		status = "Validation passed"
-		statusColor = output.Green
-	}
-	if _, err := fmt.Fprintln(w, output.Color(colorEnabled, statusColor, status)); err != nil {
+	if _, err := fmt.Fprintln(w); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "Pages checked: %d\n", result.Pages); err != nil {
@@ -383,7 +384,7 @@ func printValidationResult(w io.Writer, result validationResult, colorEnabled bo
 
 	var errors []validationOutputLine
 	for _, issue := range result.Errors {
-		errors = append(errors, validationOutputLine{Location: validationLocation(issue.PagePath, issue.Line), Detail: fmt.Sprintf("%s: %s", issue.Rule, issue.Message)})
+		errors = append(errors, validationOutputLine{Page: issue.PagePath, Line: issue.Line, Detail: fmt.Sprintf("%s: %s", issue.Rule, issue.Message)})
 	}
 	if err := printValidationSection(w, "Errors", errors, colorEnabled, output.Red); err != nil {
 		return err
@@ -391,7 +392,7 @@ func printValidationResult(w io.Writer, result validationResult, colorEnabled bo
 
 	var links []validationOutputLine
 	for _, link := range result.BrokenLinks {
-		links = append(links, validationOutputLine{Location: validationLocation(link.PagePath, link.Line), Detail: missingTargetDetail("missing page", link.Resolved, link.Target)})
+		links = append(links, validationOutputLine{Page: link.PagePath, Line: link.Line, Detail: missingTargetDetail("missing-page", link.Resolved, link.Target)})
 	}
 	if err := printValidationSection(w, "Broken Links", links, colorEnabled, output.Red); err != nil {
 		return err
@@ -399,7 +400,7 @@ func printValidationResult(w io.Writer, result validationResult, colorEnabled bo
 
 	var images []validationOutputLine
 	for _, image := range result.BrokenImages {
-		images = append(images, validationOutputLine{Location: validationLocation(image.PagePath, image.Line), Detail: missingTargetDetail("missing asset", image.Resolved, image.Target)})
+		images = append(images, validationOutputLine{Page: image.PagePath, Line: image.Line, Detail: missingTargetDetail("missing-asset", image.Resolved, image.Target)})
 	}
 	if err := printValidationSection(w, "Broken Images", images, colorEnabled, output.Red); err != nil {
 		return err
@@ -407,45 +408,61 @@ func printValidationResult(w io.Writer, result validationResult, colorEnabled bo
 
 	var warnings []validationOutputLine
 	for _, issue := range result.Warnings {
-		warnings = append(warnings, validationOutputLine{Location: validationLocation(issue.PagePath, issue.Line), Detail: fmt.Sprintf("%s: %s", issue.Rule, issue.Message)})
+		warnings = append(warnings, validationOutputLine{Page: issue.PagePath, Line: issue.Line, Detail: fmt.Sprintf("%s: %s", issue.Rule, issue.Message)})
 	}
 	return printValidationSection(w, "Warnings", warnings, colorEnabled, output.Yellow)
 }
 
 type validationOutputLine struct {
-	Location string
-	Detail   string
+	Page   string
+	Line   int
+	Detail string
 }
 
 func printValidationSection(w io.Writer, title string, lines []validationOutputLine, colorEnabled bool, color string) error {
 	if len(lines) == 0 {
 		return nil
 	}
-	if _, err := fmt.Fprintf(w, "\n%s\n", title); err != nil {
+	if _, err := fmt.Fprintf(w, "\n%s\n", output.Color(colorEnabled, color, title)); err != nil {
 		return err
 	}
 	sort.Slice(lines, func(i, j int) bool {
-		if lines[i].Location == lines[j].Location {
-			return lines[i].Detail < lines[j].Detail
+		if lines[i].Page == lines[j].Page {
+			if lines[i].Line == lines[j].Line {
+				return lines[i].Detail < lines[j].Detail
+			}
+			return lines[i].Line < lines[j].Line
 		}
-		return lines[i].Location < lines[j].Location
+		return lines[i].Page < lines[j].Page
 	})
+	pageWidth := len("Page")
+	lineWidth := len("Line")
 	for _, line := range lines {
-		location := output.Color(colorEnabled, color, line.Location)
-		if _, err := fmt.Fprintf(w, "  %s  %s\n", location, line.Detail); err != nil {
+		if len(line.Page) > pageWidth {
+			pageWidth = len(line.Page)
+		}
+		lineText := strconv.Itoa(line.Line)
+		if len(lineText) > lineWidth {
+			lineWidth = len(lineText)
+		}
+	}
+	if _, err := fmt.Fprintf(w, "%-*s  %-*s  %s\n", pageWidth, "Page", lineWidth, "Line", "Problem"); err != nil {
+		return err
+	}
+	for _, line := range lines {
+		lineText := strconv.Itoa(line.Line)
+		pagePadding := strings.Repeat(" ", pageWidth-len(line.Page))
+		linePadding := strings.Repeat(" ", lineWidth-len(lineText))
+		if _, err := fmt.Fprintf(w, "%s%s  %s%s  %s\n", line.Page, pagePadding, lineText, linePadding, line.Detail); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validationLocation(path string, line int) string {
-	return fmt.Sprintf("%s:%d", path, line)
-}
-
 func missingTargetDetail(kind, resolved, target string) string {
 	if normalizeWikiPath(target) == normalizeWikiPath(resolved) {
-		return fmt.Sprintf("%s %s", kind, resolved)
+		return fmt.Sprintf("%s: %s", kind, resolved)
 	}
-	return fmt.Sprintf("%s %s (from %s)", kind, resolved, target)
+	return fmt.Sprintf("%s: %s (from %s)", kind, resolved, target)
 }

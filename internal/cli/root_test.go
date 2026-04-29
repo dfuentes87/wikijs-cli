@@ -295,6 +295,29 @@ func TestHelpCommandsAreAlphabetical(t *testing.T) {
 	}
 }
 
+func TestLintHelpMentionsLocalMarkdownFile(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "lint           Lint a local Markdown file") {
+		t.Fatalf("root help missing lint wording:\n%s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	cmd = newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"help", "lint"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Lint a local Markdown file") {
+		t.Fatalf("lint help missing lint wording:\n%s", out.String())
+	}
+}
+
 func TestSuccessCommandsEmitJSON(t *testing.T) {
 	tests := [][]string{
 		{"--format", "json", "move", "1", "/new/path"},
@@ -717,8 +740,14 @@ func TestCheckLinksReportsBrokenInternalLinks(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "broken internal links") {
 		t.Fatalf("expected broken links error, got %v", err)
 	}
-	if !strings.Contains(out.String(), "/missing") {
+	if !strings.Contains(out.String(), "Problem") || !strings.Contains(out.String(), "missing-page: missing") {
 		t.Fatalf("check-links output = %q", out.String())
+	}
+	if !strings.HasPrefix(out.String(), "\nPage") {
+		t.Fatalf("check-links output should start with a blank line before the table: %q", out.String())
+	}
+	if strings.Contains(out.String(), "/missing  missing") {
+		t.Fatalf("check-links output used confusing duplicate target columns = %q", out.String())
 	}
 	if !strings.HasSuffix(errOut.String(), "\n\n") {
 		t.Fatalf("check-links error output = %q, want blank line", errOut.String())
@@ -833,15 +862,27 @@ func TestValidateReportsContentProblems(t *testing.T) {
 	if !strings.Contains(out.String(), "heading-space") || !strings.Contains(out.String(), "Broken Links") || !strings.Contains(out.String(), "Broken Images") {
 		t.Fatalf("validate output = %q", out.String())
 	}
-	if !strings.Contains(out.String(), "missing page missing") || !strings.Contains(out.String(), "missing asset missing.png") {
+	if !strings.HasPrefix(out.String(), "\nPages checked") {
+		t.Fatalf("validate output should start with a blank line before the summary: %q", out.String())
+	}
+	if !strings.HasSuffix(errOut.String(), "\n") {
+		t.Fatalf("validate error output should include a blank line before the final error: %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), "Page") || !strings.Contains(out.String(), "Line") || !strings.Contains(out.String(), "Problem") {
+		t.Fatalf("validate output missing table headers = %q", out.String())
+	}
+	if !strings.Contains(out.String(), "missing-page: missing") || !strings.Contains(out.String(), "missing-asset: missing.png") {
 		t.Fatalf("validate output missing clearer broken target details = %q", out.String())
 	}
 	if !strings.Contains(out.String(), "Pages checked: 1") || !strings.Contains(out.String(), "Warnings: 1") || !strings.Contains(out.String(), "first-heading-h1") {
 		t.Fatalf("validate output missing summary or warning detail = %q", out.String())
 	}
+	if !strings.Contains(out.String(), output.Red+"Broken Links"+output.Reset) || !strings.Contains(out.String(), output.Yellow+"Warnings"+output.Reset) {
+		t.Fatalf("validate output missing colored section headers = %q", out.String())
+	}
 }
 
-func TestValidationOutputColorsOnlyLocations(t *testing.T) {
+func TestValidationOutputColorsSectionHeadersWithoutBreakingColumns(t *testing.T) {
 	var out bytes.Buffer
 	result := validationResult{
 		Pages: 1,
@@ -861,10 +902,15 @@ func TestValidationOutputColorsOnlyLocations(t *testing.T) {
 	if strings.Contains(out.String(), "/missing -> missing") {
 		t.Fatalf("validation output used confusing target arrow: %q", out.String())
 	}
-	if !strings.Contains(out.String(), output.Red+"home:2"+output.Reset) {
-		t.Fatalf("validation location was not colored: %q", out.String())
+	if !strings.Contains(out.String(), output.Red+"Broken Links"+output.Reset) {
+		t.Fatalf("validation broken links header was not colored: %q", out.String())
 	}
-	if strings.Contains(out.String(), output.Red+"/missing") {
-		t.Fatalf("validation output colors more than the location: %q", out.String())
+	if strings.Contains(out.String(), output.Red+"home") || strings.Contains(out.String(), output.Red+"/missing") {
+		t.Fatalf("validation output colors table cells: %q", out.String())
+	}
+	plain := strings.ReplaceAll(out.String(), output.Red, "")
+	plain = strings.ReplaceAll(plain, output.Reset, "")
+	if !strings.Contains(plain, "Page  Line  Problem\nhome  2     missing-page: missing") {
+		t.Fatalf("validation table columns are not aligned: %q", plain)
 	}
 }
