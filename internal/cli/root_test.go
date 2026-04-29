@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -87,6 +88,206 @@ func TestListJSON(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"title": "Home"`) {
 		t.Fatalf("out = %s", out.String())
+	}
+}
+
+type bulkMoveCall struct {
+	ID     int
+	Path   string
+	Locale string
+}
+
+type bulkMoveClient struct {
+	fakeClient
+	pages []api.Page
+	moves []bulkMoveCall
+}
+
+func (c *bulkMoveClient) ListPages(context.Context, api.ListOptions) ([]api.Page, error) {
+	return c.pages, nil
+}
+
+func (c *bulkMoveClient) MovePage(_ context.Context, id int, path string, locale string) error {
+	c.moves = append(c.moves, bulkMoveCall{ID: id, Path: path, Locale: locale})
+	return nil
+}
+
+func TestBulkMoveDryRunPlansWithoutMoving(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{
+		{ID: 1, Path: "docs/old", Locale: "en"},
+		{ID: 2, Path: "docs/old/page", Locale: "fr"},
+		{ID: 3, Path: "docs/other", Locale: "en"},
+	}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"bulk-move", "docs/old", "docs/new", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.moves) != 0 {
+		t.Fatalf("dry run moved pages: %+v", client.moves)
+	}
+	if !strings.Contains(out.String(), "docs/new") || !strings.Contains(out.String(), "docs/new/page") {
+		t.Fatalf("out missing planned destinations: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "2 matched, 0 moved") {
+		t.Fatalf("out missing summary: %s", out.String())
+	}
+}
+
+func TestBulkMoveConfirmedMovesPages(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{
+		{ID: 1, Path: "docs/old", Locale: "en"},
+		{ID: 2, Path: "docs/old/page", Locale: "fr"},
+	}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("yes\n"), client: client})
+	cmd.SetArgs([]string{"bulk-move", "docs/old", "docs/new"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	want := []bulkMoveCall{{ID: 1, Path: "docs/new", Locale: "en"}, {ID: 2, Path: "docs/new/page", Locale: "fr"}}
+	if len(client.moves) != len(want) {
+		t.Fatalf("moves = %+v, want %+v", client.moves, want)
+	}
+	for i := range want {
+		if client.moves[i] != want[i] {
+			t.Fatalf("move %d = %+v, want %+v", i, client.moves[i], want[i])
+		}
+	}
+}
+
+func TestBulkMoveCancelledDoesNotMove(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/old", Locale: "en"}}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("no\n"), client: client})
+	cmd.SetArgs([]string{"bulk-move", "docs/old", "docs/new"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("expected cancellation, got %v", err)
+	}
+	if len(client.moves) != 0 {
+		t.Fatalf("cancelled command moved pages: %+v", client.moves)
+	}
+}
+
+func TestBulkMoveForceSkipsConfirmation(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/old", Locale: "en"}}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"bulk-move", "docs/old", "docs/new", "--force"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.moves) != 1 {
+		t.Fatalf("moves = %+v, want one move", client.moves)
+	}
+}
+
+func TestBulkMoveRejectsInvalidPrefixAndCollisions(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		pages []api.Page
+	}{
+		{
+			name:  "empty source",
+			args:  []string{"bulk-move", "", "docs/new", "--force"},
+			pages: []api.Page{{ID: 1, Path: "docs/old", Locale: "en"}},
+		},
+		{
+			name:  "same prefix",
+			args:  []string{"bulk-move", "docs/old", "docs/old", "--force"},
+			pages: []api.Page{{ID: 1, Path: "docs/old", Locale: "en"}},
+		},
+		{
+			name: "existing destination",
+			args: []string{"bulk-move", "docs/old", "docs/new", "--force"},
+			pages: []api.Page{
+				{ID: 1, Path: "docs/old/page", Locale: "en"},
+				{ID: 2, Path: "docs/new/page", Locale: "en"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &bulkMoveClient{pages: tt.pages}
+			var out, errOut bytes.Buffer
+			cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err == nil {
+				t.Fatal("expected error")
+			}
+			if len(client.moves) != 0 {
+				t.Fatalf("invalid command moved pages: %+v", client.moves)
+			}
+		})
+	}
+}
+
+func TestBulkMoveJSONIncludesPlannedMoves(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/old", Locale: "en"}}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"--format", "json", "bulk-move", "docs/old", "docs/new", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Success bool   `json:"success"`
+		Action  string `json:"action"`
+		Result  struct {
+			Matched int `json:"matched"`
+			Moved   int `json:"moved"`
+			Moves   []struct {
+				ID     int    `json:"id"`
+				Locale string `json:"locale"`
+				From   string `json:"from"`
+				To     string `json:"to"`
+			} `json:"moves"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json %q: %v", out.String(), err)
+	}
+	if !body.Success || body.Action != "bulk-move" || body.Result.Matched != 1 || body.Result.Moved != 0 || len(body.Result.Moves) != 1 {
+		t.Fatalf("unexpected body: %+v", body)
+	}
+	if body.Result.Moves[0].To != "docs/new" {
+		t.Fatalf("move destination = %q", body.Result.Moves[0].To)
+	}
+}
+
+func TestHelpCommandsAreAlphabetical(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var commands []string
+	inCommands := false
+	for _, line := range strings.Split(out.String(), "\n") {
+		switch {
+		case strings.TrimSpace(line) == "Available Commands:":
+			inCommands = true
+			continue
+		case inCommands && strings.TrimSpace(line) == "Flags:":
+			inCommands = false
+		case inCommands && strings.HasPrefix(line, "  "):
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				commands = append(commands, fields[0])
+			}
+		}
+	}
+	if len(commands) == 0 {
+		t.Fatalf("no commands found in help output:\n%s", out.String())
+	}
+	sorted := append([]string(nil), commands...)
+	sort.Strings(sorted)
+	if strings.Join(commands, ",") != strings.Join(sorted, ",") {
+		t.Fatalf("commands not sorted:\ngot  %v\nwant %v", commands, sorted)
 	}
 }
 

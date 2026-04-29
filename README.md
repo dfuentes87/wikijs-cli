@@ -195,6 +195,10 @@ wikijs bulk-update ./pages --skip-missing
 wikijs sync --output ./local-wiki
 wikijs sync --output ./local-wiki --file-format json --format json
 wikijs sync --path /docs --delete
+
+# Move pages from one path to another
+wikijs bulk-move /docs/old /docs/new --dry-run
+wikijs bulk-move /docs/old /docs/new --force
 ```
 
 ### Asset Management

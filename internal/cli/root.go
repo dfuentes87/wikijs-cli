@@ -103,6 +103,7 @@ func newRootCommand(a *app) *cobra.Command {
 		a.validateCommand(),
 		a.bulkCreateCommand(),
 		a.bulkUpdateCommand(),
+		a.bulkMoveCommand(),
 		a.templateCommand(),
 		a.replaceCommand(),
 		a.shellCommand(),
