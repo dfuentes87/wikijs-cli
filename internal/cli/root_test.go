@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/dfuentes87/wikijs-cli/internal/api"
+	"github.com/dfuentes87/wikijs-cli/internal/output"
 )
 
 type fakeClient struct{}
@@ -37,7 +38,10 @@ func (fakeClient) ListTags(context.Context) ([]api.Tag, error) {
 	return []api.Tag{{ID: 1, Tag: "docs", Title: "Docs"}}, nil
 }
 func (fakeClient) ListAssets(context.Context, string, int) ([]api.Asset, error) {
-	return []api.Asset{{ID: 1, Filename: "image.png", Kind: "IMAGE", FileSize: 12}}, nil
+	return []api.Asset{
+		{ID: 1, Filename: "image.png", Kind: "IMAGE", FileSize: 12},
+		{ID: 2, Filename: "document.pdf", Kind: "BINARY", Mime: "application/pdf", FileSize: 1200},
+	}, nil
 }
 func (fakeClient) UploadAsset(context.Context, string, string) (map[string]any, error) {
 	return map[string]any{"ok": true}, nil
@@ -411,6 +415,9 @@ func TestAssetCommandIsSingular(t *testing.T) {
 	if !strings.Contains(out.String(), "image.png") {
 		t.Fatalf("asset output = %q", out.String())
 	}
+	if !strings.Contains(out.String(), "document.pdf") || !strings.Contains(out.String(), "PDF") {
+		t.Fatalf("asset output should show friendly document kind = %q", out.String())
+	}
 
 	out.Reset()
 	errOut.Reset()
@@ -418,6 +425,23 @@ func TestAssetCommandIsSingular(t *testing.T) {
 	cmd.SetArgs([]string{"asset" + "s", "list"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected plural asset command to be unavailable")
+	}
+}
+
+func TestAssetDisplayKind(t *testing.T) {
+	tests := []struct {
+		asset api.Asset
+		want  string
+	}{
+		{api.Asset{Filename: "calendar.pdf", Kind: "BINARY"}, "PDF"},
+		{api.Asset{Filename: "photo", Kind: "BINARY", Mime: "image/jpeg"}, "JPEG"},
+		{api.Asset{Filename: "data", Kind: "BINARY", Mime: "application/json"}, "JSON"},
+		{api.Asset{Filename: "archive.bin", Kind: "BINARY"}, "BINARY"},
+	}
+	for _, tt := range tests {
+		if got := assetDisplayKind(tt.asset); got != tt.want {
+			t.Fatalf("assetDisplayKind(%+v) = %q, want %q", tt.asset, got, tt.want)
+		}
 	}
 }
 
@@ -806,7 +830,41 @@ func TestValidateReportsContentProblems(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "validation failed") {
 		t.Fatalf("expected validation error, got %v", err)
 	}
-	if !strings.Contains(out.String(), "heading-space") || !strings.Contains(out.String(), "broken link") || !strings.Contains(out.String(), "broken image") {
+	if !strings.Contains(out.String(), "heading-space") || !strings.Contains(out.String(), "Broken Links") || !strings.Contains(out.String(), "Broken Images") {
 		t.Fatalf("validate output = %q", out.String())
+	}
+	if !strings.Contains(out.String(), "missing page missing") || !strings.Contains(out.String(), "missing asset missing.png") {
+		t.Fatalf("validate output missing clearer broken target details = %q", out.String())
+	}
+	if !strings.Contains(out.String(), "Pages checked: 1") || !strings.Contains(out.String(), "Warnings: 1") || !strings.Contains(out.String(), "first-heading-h1") {
+		t.Fatalf("validate output missing summary or warning detail = %q", out.String())
+	}
+}
+
+func TestValidationOutputColorsOnlyLocations(t *testing.T) {
+	var out bytes.Buffer
+	result := validationResult{
+		Pages: 1,
+		BrokenLinks: []brokenLink{{
+			PagePath: "home",
+			Line:     2,
+			Target:   "/missing",
+			Resolved: "missing",
+		}},
+	}
+	if err := printValidationResult(&out, result, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "broken link  home:2") {
+		t.Fatalf("validation output repeated section category: %q", out.String())
+	}
+	if strings.Contains(out.String(), "/missing -> missing") {
+		t.Fatalf("validation output used confusing target arrow: %q", out.String())
+	}
+	if !strings.Contains(out.String(), output.Red+"home:2"+output.Reset) {
+		t.Fatalf("validation location was not colored: %q", out.String())
+	}
+	if strings.Contains(out.String(), output.Red+"/missing") {
+		t.Fatalf("validation output colors more than the location: %q", out.String())
 	}
 }
