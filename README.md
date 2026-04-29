@@ -17,7 +17,7 @@ features have been ported over, with some minor changes to naming and additional
 - Link checker - Find broken internal links
 - Page validation - Check images, links, and content quality
 - Templates - Create pages from reusable templates
-- Shell completion - Auto-completion for bash/zsh/fish
+- Shell completion - Auto-completion for bash/zsh/fish/powershell
 - Tree view - Visual hierarchy of all pages
 - Interactive shell - REPL mode for multiple commands
 - Markdown linting - Validate markdown issues
@@ -79,6 +79,10 @@ Environment variables override values:
 # Check connection
 wikijs health
 
+# Show command help
+wikijs help
+wikijs help <command>
+
 # Interactive shell mode
 wikijs shell
 
@@ -134,10 +138,10 @@ wikijs tag 1 set docs,guide
 ### Search & Discovery
 
 ```bash
-# Full-text search
+# Find pages by title, path, description
 wikijs search "configuration"
 
-# Search within page content
+# Search content within a page
 wikijs grep "TODO"
 wikijs grep "deprecated" --path /docs --case-sensitive
 
