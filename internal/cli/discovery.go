@@ -171,6 +171,15 @@ func applyTagOperation(ctx context.Context, client WikiClient, id int, operation
 		return api.Page{}, err
 	}
 	next := []string(current.Tags)
+	next, err = tagsAfterOperation(next, operation, tags)
+	if err != nil {
+		return api.Page{}, err
+	}
+	return client.UpdatePage(ctx, api.UpdatePageInput{ID: id, Tags: next, SetTags: true})
+}
+
+func tagsAfterOperation(current []string, operation string, tags []string) ([]string, error) {
+	next := append([]string(nil), current...)
 	switch operation {
 	case "add":
 		for _, tag := range tags {
@@ -191,12 +200,12 @@ func applyTagOperation(ctx context.Context, client WikiClient, id int, operation
 		}
 		next = kept
 	case "set":
-		next = tags
+		next = append([]string(nil), tags...)
 	default:
-		return api.Page{}, fmt.Errorf("unsupported tag operation %q", operation)
+		return nil, fmt.Errorf("unsupported tag operation %q", operation)
 	}
 	sort.Strings(next)
-	return client.UpdatePage(ctx, api.UpdatePageInput{ID: id, Tags: next, SetTags: true})
+	return next, nil
 }
 
 func containsTag(tags []string, value string) bool {

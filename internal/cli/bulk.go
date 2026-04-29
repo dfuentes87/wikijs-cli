@@ -186,6 +186,134 @@ func (a *app) bulkMoveCommand() *cobra.Command {
 	return cmd
 }
 
+type bulkTagItem struct {
+	ID          int      `json:"id"`
+	Path        string   `json:"path"`
+	Locale      string   `json:"locale,omitempty"`
+	CurrentTags []string `json:"currentTags"`
+	NewTags     []string `json:"newTags"`
+	Changed     bool     `json:"changed"`
+}
+
+type bulkTagResult struct {
+	Matched int           `json:"matched"`
+	Changed int           `json:"changed"`
+	Pages   []bulkTagItem `json:"pages"`
+}
+
+func (a *app) bulkTagCommand() *cobra.Command {
+	var locale string
+	var dryRun bool
+	cmd := &cobra.Command{Use: "bulk-tag <path-prefix> <add|remove|set> <tags>", Short: "Manage tags for pages under a path prefix", Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
+		pathPrefix := normalizeWikiPath(args[0])
+		if pathPrefix == "" {
+			return errors.New("path-prefix must not be empty")
+		}
+		tags := parseTags(args[2])
+		if len(tags) == 0 {
+			return errors.New("at least one tag is required")
+		}
+		client, err := a.getClient()
+		if err != nil {
+			return err
+		}
+		pages, err := client.ListPages(cmd.Context(), api.ListOptions{Limit: 0})
+		if err != nil {
+			return err
+		}
+		result, err := planBulkTag(pages, pathPrefix, locale, args[1], tags)
+		if err != nil {
+			return err
+		}
+		if !dryRun {
+			for i, item := range result.Pages {
+				a.progress("Tagging", i+1, len(result.Pages))
+				if !item.Changed {
+					continue
+				}
+				if _, err := client.UpdatePage(cmd.Context(), api.UpdatePageInput{ID: item.ID, Tags: item.NewTags, SetTags: true}); err != nil {
+					return err
+				}
+			}
+			a.progressDone()
+		}
+		if a.format == "json" {
+			return output.JSON(a.out, successResult{Success: true, Action: "bulk-tag", Result: result})
+		}
+		if err := printBulkTagPlan(a.out, result.Pages); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(a.out, "%s\n", a.success(fmt.Sprintf("bulk-tag complete: %d matched, %d changed", result.Matched, result.Changed)))
+		return err
+	}}
+	cmd.Flags().StringVar(&locale, "locale", "", "only tag pages in this locale")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show pages without updating tags")
+	return cmd
+}
+
+type bulkDeleteItem struct {
+	ID     int    `json:"id"`
+	Path   string `json:"path"`
+	Title  string `json:"title,omitempty"`
+	Locale string `json:"locale,omitempty"`
+}
+
+type bulkDeleteResult struct {
+	Matched int              `json:"matched"`
+	Deleted int              `json:"deleted"`
+	Pages   []bulkDeleteItem `json:"pages"`
+}
+
+func (a *app) bulkDeleteCommand() *cobra.Command {
+	var locale string
+	var dryRun, force bool
+	cmd := &cobra.Command{Use: "bulk-delete <path-prefix>", Short: "Delete pages under a path prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		pathPrefix := normalizeWikiPath(args[0])
+		if pathPrefix == "" {
+			return errors.New("path-prefix must not be empty")
+		}
+		client, err := a.getClient()
+		if err != nil {
+			return err
+		}
+		pages, err := client.ListPages(cmd.Context(), api.ListOptions{Limit: 0})
+		if err != nil {
+			return err
+		}
+		result := planBulkDelete(pages, pathPrefix, locale)
+		if a.format == "json" {
+			if !dryRun && len(result.Pages) > 0 {
+				if !force && !a.confirm(fmt.Sprintf("Delete %d pages under %s? This cannot be undone.", len(result.Pages), pathPrefix)) {
+					return errors.New("bulk delete cancelled")
+				}
+				if err := applyBulkDelete(cmd.Context(), client, result.Pages, a); err != nil {
+					return err
+				}
+				result.Deleted = len(result.Pages)
+			}
+			return output.JSON(a.out, successResult{Success: true, Action: "bulk-delete", Result: result})
+		}
+		if err := printBulkDeletePlan(a.out, result.Pages); err != nil {
+			return err
+		}
+		if dryRun || len(result.Pages) == 0 {
+			return printBulkDeleteSummary(a.out, a, result)
+		}
+		if !force && !a.confirm(fmt.Sprintf("Delete %d pages under %s? This cannot be undone.", len(result.Pages), pathPrefix)) {
+			return errors.New("bulk delete cancelled")
+		}
+		if err := applyBulkDelete(cmd.Context(), client, result.Pages, a); err != nil {
+			return err
+		}
+		result.Deleted = len(result.Pages)
+		return printBulkDeleteSummary(a.out, a, result)
+	}}
+	cmd.Flags().StringVar(&locale, "locale", "", "only delete pages in this locale")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show pages without deleting them")
+	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation")
+	return cmd
+}
+
 func markdownFiles(root string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -323,4 +451,116 @@ func printBulkMovePlan(w io.Writer, moves []bulkMoveItem) error {
 func printBulkMoveSummary(w io.Writer, a *app, action string, result bulkMoveResult) error {
 	_, err := fmt.Fprintf(w, "%s\n", a.success(fmt.Sprintf("%s complete: %d matched, %d moved", action, result.Matched, result.Moved)))
 	return err
+}
+
+func planBulkTag(pages []api.Page, pathPrefix, locale, operation string, tags []string) (bulkTagResult, error) {
+	items := make([]bulkTagItem, 0)
+	for _, page := range pages {
+		if !hasWikiPathPrefix(page.Path, pathPrefix) || (locale != "" && page.Locale != locale) {
+			continue
+		}
+		current := append([]string(nil), []string(page.Tags)...)
+		sort.Strings(current)
+		next, err := tagsAfterOperation(current, operation, tags)
+		if err != nil {
+			return bulkTagResult{}, err
+		}
+		items = append(items, bulkTagItem{
+			ID:          page.ID,
+			Path:        normalizeWikiPath(page.Path),
+			Locale:      page.Locale,
+			CurrentTags: current,
+			NewTags:     next,
+			Changed:     !sameStrings(current, next),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Path == items[j].Path {
+			return items[i].Locale < items[j].Locale
+		}
+		return items[i].Path < items[j].Path
+	})
+	result := bulkTagResult{Matched: len(items), Pages: items}
+	for _, item := range items {
+		if item.Changed {
+			result.Changed++
+		}
+	}
+	return result, nil
+}
+
+func printBulkTagPlan(w io.Writer, items []bulkTagItem) error {
+	if len(items) == 0 {
+		_, err := fmt.Fprintln(w, "No pages matched")
+		return err
+	}
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			strconvItoa(item.ID),
+			item.Path,
+			item.Locale,
+			strings.Join(item.CurrentTags, ", "),
+			strings.Join(item.NewTags, ", "),
+			output.Bool(item.Changed),
+		})
+	}
+	return output.Table(w, []string{"ID", "Page", "Locale", "Current Tags", "New Tags", "Changed"}, rows)
+}
+
+func planBulkDelete(pages []api.Page, pathPrefix, locale string) bulkDeleteResult {
+	items := make([]bulkDeleteItem, 0)
+	for _, page := range pages {
+		if !hasWikiPathPrefix(page.Path, pathPrefix) || (locale != "" && page.Locale != locale) {
+			continue
+		}
+		items = append(items, bulkDeleteItem{ID: page.ID, Path: normalizeWikiPath(page.Path), Title: page.Title, Locale: page.Locale})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Path == items[j].Path {
+			return items[i].Locale < items[j].Locale
+		}
+		return items[i].Path < items[j].Path
+	})
+	return bulkDeleteResult{Matched: len(items), Pages: items}
+}
+
+func applyBulkDelete(ctx context.Context, client WikiClient, items []bulkDeleteItem, a *app) error {
+	for i, item := range items {
+		a.progress("Deleting", i+1, len(items))
+		if err := client.DeletePage(ctx, item.ID); err != nil {
+			return err
+		}
+	}
+	a.progressDone()
+	return nil
+}
+
+func printBulkDeletePlan(w io.Writer, items []bulkDeleteItem) error {
+	if len(items) == 0 {
+		_, err := fmt.Fprintln(w, "No pages matched")
+		return err
+	}
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{strconvItoa(item.ID), item.Path, item.Locale, item.Title})
+	}
+	return output.Table(w, []string{"ID", "Page", "Locale", "Title"}, rows)
+}
+
+func printBulkDeleteSummary(w io.Writer, a *app, result bulkDeleteResult) error {
+	_, err := fmt.Fprintf(w, "%s\n", a.success(fmt.Sprintf("bulk-delete complete: %d matched, %d deleted", result.Matched, result.Deleted)))
+	return err
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }

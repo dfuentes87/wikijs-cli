@@ -103,8 +103,10 @@ type bulkMoveCall struct {
 
 type bulkMoveClient struct {
 	fakeClient
-	pages []api.Page
-	moves []bulkMoveCall
+	pages   []api.Page
+	moves   []bulkMoveCall
+	updates []api.UpdatePageInput
+	deletes []int
 }
 
 func (c *bulkMoveClient) ListPages(context.Context, api.ListOptions) ([]api.Page, error) {
@@ -113,6 +115,16 @@ func (c *bulkMoveClient) ListPages(context.Context, api.ListOptions) ([]api.Page
 
 func (c *bulkMoveClient) MovePage(_ context.Context, id int, path string, locale string) error {
 	c.moves = append(c.moves, bulkMoveCall{ID: id, Path: path, Locale: locale})
+	return nil
+}
+
+func (c *bulkMoveClient) UpdatePage(_ context.Context, input api.UpdatePageInput) (api.Page, error) {
+	c.updates = append(c.updates, input)
+	return api.Page{ID: input.ID, Tags: api.Tags(input.Tags)}, nil
+}
+
+func (c *bulkMoveClient) DeletePage(_ context.Context, id int) error {
+	c.deletes = append(c.deletes, id)
 	return nil
 }
 
@@ -259,6 +271,159 @@ func TestBulkMoveJSONIncludesPlannedMoves(t *testing.T) {
 	}
 	if body.Result.Moves[0].To != "docs/new" {
 		t.Fatalf("move destination = %q", body.Result.Moves[0].To)
+	}
+}
+
+func TestBulkTagDryRunPlansWithoutUpdating(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{
+		{ID: 1, Path: "docs/a", Locale: "en", Tags: api.Tags{"old"}},
+		{ID: 2, Path: "docs/b", Locale: "fr", Tags: api.Tags{"old", "new"}},
+		{ID: 3, Path: "other/c", Locale: "en", Tags: api.Tags{"old"}},
+	}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"bulk-tag", "docs", "add", "new", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.updates) != 0 {
+		t.Fatalf("dry run updated pages: %+v", client.updates)
+	}
+	if !strings.Contains(out.String(), "docs/a") || !strings.Contains(out.String(), "2 matched, 1 changed") {
+		t.Fatalf("bulk-tag output = %q", out.String())
+	}
+}
+
+func TestBulkTagUpdatesChangedPages(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{
+		{ID: 1, Path: "docs/a", Locale: "en", Tags: api.Tags{"old"}},
+		{ID: 2, Path: "docs/b", Locale: "en", Tags: api.Tags{"old", "new"}},
+	}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"bulk-tag", "docs", "add", "new"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.updates) != 1 {
+		t.Fatalf("updates = %+v, want one changed page", client.updates)
+	}
+	if client.updates[0].ID != 1 || !client.updates[0].SetTags || strings.Join(client.updates[0].Tags, ",") != "new,old" {
+		t.Fatalf("update = %+v", client.updates[0])
+	}
+}
+
+func TestBulkTagJSONIncludesPlan(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/a", Locale: "en", Tags: api.Tags{"old"}}}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"--format", "json", "bulk-tag", "docs", "set", "new", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Success bool   `json:"success"`
+		Action  string `json:"action"`
+		Result  struct {
+			Matched int `json:"matched"`
+			Changed int `json:"changed"`
+			Pages   []struct {
+				ID      int      `json:"id"`
+				NewTags []string `json:"newTags"`
+			} `json:"pages"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json %q: %v", out.String(), err)
+	}
+	if !body.Success || body.Action != "bulk-tag" || body.Result.Matched != 1 || body.Result.Changed != 1 || body.Result.Pages[0].NewTags[0] != "new" {
+		t.Fatalf("unexpected body: %+v", body)
+	}
+}
+
+func TestBulkDeleteDryRunPlansWithoutDeleting(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{
+		{ID: 1, Path: "docs/a", Title: "A", Locale: "en"},
+		{ID: 2, Path: "docs/b", Title: "B", Locale: "fr"},
+		{ID: 3, Path: "other/c", Title: "C", Locale: "en"},
+	}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"bulk-delete", "docs", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.deletes) != 0 {
+		t.Fatalf("dry run deleted pages: %+v", client.deletes)
+	}
+	if !strings.Contains(out.String(), "docs/a") || !strings.Contains(out.String(), "2 matched, 0 deleted") {
+		t.Fatalf("bulk-delete output = %q", out.String())
+	}
+}
+
+func TestBulkDeleteConfirmedDeletesPages(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/a", Locale: "en"}, {ID: 2, Path: "docs/b", Locale: "en"}}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("yes\n"), client: client})
+	cmd.SetArgs([]string{"bulk-delete", "docs"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.deletes) != 2 || client.deletes[0] != 1 || client.deletes[1] != 2 {
+		t.Fatalf("deletes = %+v", client.deletes)
+	}
+}
+
+func TestBulkDeleteCancelledAndRejectsEmptyPrefix(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		in   string
+	}{
+		{name: "cancelled", args: []string{"bulk-delete", "docs"}, in: "no\n"},
+		{name: "empty prefix", args: []string{"bulk-delete", "", "--force"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/a", Locale: "en"}}}
+			var out, errOut bytes.Buffer
+			cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(tt.in), client: client})
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err == nil {
+				t.Fatal("expected error")
+			}
+			if len(client.deletes) != 0 {
+				t.Fatalf("command deleted pages: %+v", client.deletes)
+			}
+		})
+	}
+}
+
+func TestBulkDeleteJSONIncludesPlan(t *testing.T) {
+	client := &bulkMoveClient{pages: []api.Page{{ID: 1, Path: "docs/a", Locale: "en"}}}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: client})
+	cmd.SetArgs([]string{"--format", "json", "bulk-delete", "docs", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Success bool   `json:"success"`
+		Action  string `json:"action"`
+		Result  struct {
+			Matched int `json:"matched"`
+			Deleted int `json:"deleted"`
+			Pages   []struct {
+				ID   int    `json:"id"`
+				Path string `json:"path"`
+			} `json:"pages"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json %q: %v", out.String(), err)
+	}
+	if !body.Success || body.Action != "bulk-delete" || body.Result.Matched != 1 || body.Result.Deleted != 0 || body.Result.Pages[0].Path != "docs/a" {
+		t.Fatalf("unexpected body: %+v", body)
 	}
 }
 
