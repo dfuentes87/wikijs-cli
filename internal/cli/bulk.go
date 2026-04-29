@@ -213,6 +213,9 @@ func (a *app) bulkTagCommand() *cobra.Command {
 		if len(tags) == 0 {
 			return errors.New("at least one tag is required")
 		}
+		if _, err := tagsAfterOperation(nil, args[1], tags); err != nil {
+			return err
+		}
 		client, err := a.getClient()
 		if err != nil {
 			return err
