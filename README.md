@@ -187,6 +187,7 @@ wikijs revert 1 5
 # Create pages from a folder of markdown files
 wikijs bulk-create ./pages --path-prefix /docs --tag imported
 wikijs bulk-create ./pages --dry-run
+
 # Update existing pages from files
 wikijs bulk-update ./pages --path-prefix /docs
 wikijs bulk-update ./pages --skip-missing
@@ -195,6 +196,15 @@ wikijs bulk-update ./pages --skip-missing
 wikijs sync --output ./local-wiki
 wikijs sync --output ./local-wiki --file-format json --format json
 wikijs sync --path /docs --delete
+
+# Move pages from one path to another
+wikijs bulk-move /docs/old /docs/new --dry-run
+wikijs bulk-move /docs/old /docs/new --force
+
+# Bulk tag or delete pages under a path
+wikijs bulk-tag /docs add reviewed --dry-run
+wikijs bulk-delete /docs/archive --dry-run
+wikijs bulk-delete /docs/archive --force
 ```
 
 ### Asset Management
@@ -245,7 +255,7 @@ wikijs replace "old[0-9]+" "new" --regex --case-sensitive --force
 ### Content Quality
 
 ```bash
-# Lint markdown files
+# Lint a local Markdown file
 wikijs lint ./document.md
 wikijs lint ./document.md --format json
 

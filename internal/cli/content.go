@@ -75,12 +75,16 @@ func (a *app) checkLinksCommand() *cobra.Command {
 		} else {
 			rows := make([][]string, 0, len(result.Broken))
 			for _, item := range result.Broken {
-				rows = append(rows, []string{item.PagePath, strconv.Itoa(item.Line), item.Target, item.Resolved})
+				rows = append(rows, []string{item.PagePath, strconv.Itoa(item.Line), missingTargetDetail("missing-page", item.Resolved, item.Target)})
 			}
 			if len(rows) == 0 {
+				fmt.Fprintln(a.out)
 				fmt.Fprintf(a.out, "Checked %d pages; no broken internal links found\n", result.Checked)
-			} else if err := output.Table(a.out, []string{"Page", "Line", "Target", "Resolved"}, rows); err != nil {
-				return err
+			} else {
+				fmt.Fprintln(a.out)
+				if err := output.Table(a.out, []string{"Page", "Line", "Problem"}, rows); err != nil {
+					return err
+				}
 			}
 		}
 		if !result.Valid {
@@ -139,6 +143,9 @@ func (a *app) validateCommand() *cobra.Command {
 			return err
 		}
 		if !result.Valid {
+			if a.format != "json" {
+				fmt.Fprintln(a.errOut)
+			}
 			return errors.New("validation failed")
 		}
 		return nil
@@ -356,28 +363,106 @@ func hasWikiPathPrefix(pagePath, prefix string) bool {
 }
 
 func printValidationResult(w io.Writer, result validationResult, colorEnabled bool) error {
-	if result.Valid {
-		_, err := fmt.Fprintf(w, "Validated %d pages; no errors found\n", result.Pages)
+	if _, err := fmt.Fprintln(w); err != nil {
 		return err
 	}
-	var lines []string
+	if _, err := fmt.Fprintf(w, "Pages checked: %d\n", result.Pages); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Errors: %d\n", len(result.Errors)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Broken links: %d\n", len(result.BrokenLinks)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Broken images: %d\n", len(result.BrokenImages)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Warnings: %d\n", len(result.Warnings)); err != nil {
+		return err
+	}
+
+	var errors []validationOutputLine
 	for _, issue := range result.Errors {
-		lines = append(lines, output.Color(colorEnabled, output.Red, fmt.Sprintf("%s:%d %s: %s", issue.PagePath, issue.Line, issue.Rule, issue.Message)))
+		errors = append(errors, validationOutputLine{Page: issue.PagePath, Line: issue.Line, Detail: fmt.Sprintf("%s: %s", issue.Rule, issue.Message)})
 	}
+	if err := printValidationSection(w, "Errors", errors, colorEnabled, output.Red); err != nil {
+		return err
+	}
+
+	var links []validationOutputLine
 	for _, link := range result.BrokenLinks {
-		lines = append(lines, output.Color(colorEnabled, output.Red, fmt.Sprintf("%s:%d broken link %s -> %s", link.PagePath, link.Line, link.Target, link.Resolved)))
+		links = append(links, validationOutputLine{Page: link.PagePath, Line: link.Line, Detail: missingTargetDetail("missing-page", link.Resolved, link.Target)})
 	}
+	if err := printValidationSection(w, "Broken Links", links, colorEnabled, output.Red); err != nil {
+		return err
+	}
+
+	var images []validationOutputLine
 	for _, image := range result.BrokenImages {
-		lines = append(lines, output.Color(colorEnabled, output.Red, fmt.Sprintf("%s:%d broken image %s -> %s", image.PagePath, image.Line, image.Target, image.Resolved)))
+		images = append(images, validationOutputLine{Page: image.PagePath, Line: image.Line, Detail: missingTargetDetail("missing-asset", image.Resolved, image.Target)})
 	}
-	sort.Strings(lines)
+	if err := printValidationSection(w, "Broken Images", images, colorEnabled, output.Red); err != nil {
+		return err
+	}
+
+	var warnings []validationOutputLine
+	for _, issue := range result.Warnings {
+		warnings = append(warnings, validationOutputLine{Page: issue.PagePath, Line: issue.Line, Detail: fmt.Sprintf("%s: %s", issue.Rule, issue.Message)})
+	}
+	return printValidationSection(w, "Warnings", warnings, colorEnabled, output.Yellow)
+}
+
+type validationOutputLine struct {
+	Page   string
+	Line   int
+	Detail string
+}
+
+func printValidationSection(w io.Writer, title string, lines []validationOutputLine, colorEnabled bool, color string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "\n%s\n", output.Color(colorEnabled, color, title)); err != nil {
+		return err
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].Page == lines[j].Page {
+			if lines[i].Line == lines[j].Line {
+				return lines[i].Detail < lines[j].Detail
+			}
+			return lines[i].Line < lines[j].Line
+		}
+		return lines[i].Page < lines[j].Page
+	})
+	pageWidth := len("Page")
+	lineWidth := len("Line")
 	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
+		if len(line.Page) > pageWidth {
+			pageWidth = len(line.Page)
+		}
+		lineText := strconv.Itoa(line.Line)
+		if len(lineText) > lineWidth {
+			lineWidth = len(lineText)
+		}
+	}
+	if _, err := fmt.Fprintf(w, "%-*s  %-*s  %s\n", pageWidth, "Page", lineWidth, "Line", "Problem"); err != nil {
+		return err
+	}
+	for _, line := range lines {
+		lineText := strconv.Itoa(line.Line)
+		pagePadding := strings.Repeat(" ", pageWidth-len(line.Page))
+		linePadding := strings.Repeat(" ", lineWidth-len(lineText))
+		if _, err := fmt.Fprintf(w, "%s%s  %s%s  %s\n", line.Page, pagePadding, lineText, linePadding, line.Detail); err != nil {
 			return err
 		}
 	}
-	if len(result.Warnings) > 0 {
-		fmt.Fprintln(w, output.Color(colorEnabled, output.Yellow, fmt.Sprintf("%d warnings", len(result.Warnings))))
-	}
 	return nil
+}
+
+func missingTargetDetail(kind, resolved, target string) string {
+	if normalizeWikiPath(target) == normalizeWikiPath(resolved) {
+		return fmt.Sprintf("%s: %s", kind, resolved)
+	}
+	return fmt.Sprintf("%s: %s (from %s)", kind, resolved, target)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -103,6 +104,9 @@ func newRootCommand(a *app) *cobra.Command {
 		a.validateCommand(),
 		a.bulkCreateCommand(),
 		a.bulkUpdateCommand(),
+		a.bulkMoveCommand(),
+		a.bulkTagCommand(),
+		a.bulkDeleteCommand(),
 		a.templateCommand(),
 		a.replaceCommand(),
 		a.shellCommand(),
@@ -512,7 +516,7 @@ func (a *app) assetCommand() *cobra.Command {
 		}
 		rows := make([][]string, 0, len(assets))
 		for _, asset := range assets {
-			rows = append(rows, []string{strconv.Itoa(asset.ID), asset.Filename, asset.Kind, output.Bytes(asset.FileSize)})
+			rows = append(rows, []string{strconv.Itoa(asset.ID), asset.Filename, assetDisplayKind(asset), output.Bytes(asset.FileSize)})
 		}
 		return a.print(assets, []string{"ID", "Filename", "Kind", "Size"}, rows)
 	}}
@@ -562,6 +566,61 @@ func (a *app) assetCommand() *cobra.Command {
 	return cmd
 }
 
+func assetDisplayKind(asset api.Asset) string {
+	ext := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(asset.Ext)), ".")
+	if ext == "" {
+		ext = strings.TrimPrefix(strings.ToLower(filepath.Ext(asset.Filename)), ".")
+	}
+	switch ext {
+	case "pdf":
+		return "PDF"
+	case "jpg", "jpeg":
+		return "JPEG"
+	case "png":
+		return "PNG"
+	case "gif":
+		return "GIF"
+	case "svg":
+		return "SVG"
+	case "webp":
+		return "WEBP"
+	case "txt":
+		return "TEXT"
+	case "md", "markdown":
+		return "MARKDOWN"
+	case "csv":
+		return "CSV"
+	case "json":
+		return "JSON"
+	case "doc", "docx":
+		return "WORD"
+	case "xls", "xlsx":
+		return "EXCEL"
+	case "ppt", "pptx":
+		return "POWERPOINT"
+	case "zip":
+		return "ZIP"
+	}
+	mime := strings.ToLower(strings.TrimSpace(asset.Mime))
+	switch {
+	case mime == "application/pdf":
+		return "PDF"
+	case strings.HasPrefix(mime, "image/"):
+		return strings.ToUpper(strings.TrimPrefix(mime, "image/"))
+	case strings.HasPrefix(mime, "text/"):
+		return "TEXT"
+	case mime == "application/json":
+		return "JSON"
+	}
+	if asset.Kind != "" {
+		return asset.Kind
+	}
+	if ext != "" {
+		return strings.ToUpper(ext)
+	}
+	return "UNKNOWN"
+}
+
 func (a *app) treeCommand() *cobra.Command {
 	var locale string
 	cmd := &cobra.Command{Use: "tree", Short: "Show page tree", RunE: func(cmd *cobra.Command, args []string) error {
@@ -584,7 +643,7 @@ func (a *app) treeCommand() *cobra.Command {
 }
 
 func (a *app) lintCommand() *cobra.Command {
-	return &cobra.Command{Use: "lint <file>", Short: "Lint a Markdown file", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "lint <file>", Short: "Lint a local Markdown file", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		data, err := os.ReadFile(args[0])
 		if err != nil {
 			return err
