@@ -25,3 +25,12 @@ func TestTable(t *testing.T) {
 		t.Fatalf("unexpected table: %s", buf.String())
 	}
 }
+
+func TestColor(t *testing.T) {
+	if got := Color(false, Green, "ok"); got != "ok" {
+		t.Fatalf("disabled color = %q", got)
+	}
+	if got := Color(true, Green, "ok"); got != Green+"ok"+Reset {
+		t.Fatalf("enabled color = %q", got)
+	}
+}

@@ -120,6 +120,53 @@ func TestSuccessCommandsEmitJSON(t *testing.T) {
 	}
 }
 
+func TestNoColorSuppressesSuccessColor(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"--no-color", "move", "1", "/new/path"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if hasANSI(out.String()) {
+		t.Fatalf("no-color output contains ANSI: %q", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	cmd = newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"move", "1", "/new/path"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !hasANSI(out.String()) {
+		t.Fatalf("colored output missing ANSI: %q", out.String())
+	}
+}
+
+func TestRawOutputIsUncolored(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"get", "1", "--raw"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if hasANSI(out.String()) || out.String() != "# Home" {
+		t.Fatalf("raw output = %q", out.String())
+	}
+}
+
+func TestJSONOutputIsUncolored(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
+	cmd.SetArgs([]string{"--format", "json", "move", "1", "/new/path"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if hasANSI(out.String()) {
+		t.Fatalf("json output contains ANSI: %q", out.String())
+	}
+}
+
 func TestVersionCommandUnavailable(t *testing.T) {
 	var out, errOut bytes.Buffer
 	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: fakeClient{}})
@@ -482,6 +529,44 @@ func TestDiffComparesVersions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDiffUsesColorOnlyForTableOutput(t *testing.T) {
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: diffClient{}})
+	cmd.SetArgs([]string{"diff", "1", "1", "2"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !hasANSI(out.String()) {
+		t.Fatalf("diff output missing ANSI: %q", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	cmd = newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: diffClient{}})
+	cmd.SetArgs([]string{"--no-color", "diff", "1", "1", "2"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if hasANSI(out.String()) {
+		t.Fatalf("no-color diff output contains ANSI: %q", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	cmd = newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader(""), client: diffClient{}})
+	cmd.SetArgs([]string{"--format", "json", "diff", "1", "1", "2"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if hasANSI(out.String()) {
+		t.Fatalf("json diff output contains ANSI: %q", out.String())
+	}
+}
+
+func hasANSI(value string) bool {
+	return strings.Contains(value, "\033[")
 }
 
 type cloneClient struct {

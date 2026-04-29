@@ -86,7 +86,7 @@ func (a *app) syncCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "sync", Path: outputPath, Result: summary})
 		}
-		_, err = fmt.Fprintf(a.out, "Sync complete: %d created, %d updated, %d skipped, %d deleted\n", summary.Created, summary.Updated, summary.Skipped, summary.Deleted)
+		_, err = fmt.Fprintln(a.out, a.success(fmt.Sprintf("Sync complete: %d created, %d updated, %d skipped, %d deleted", summary.Created, summary.Updated, summary.Skipped, summary.Deleted)))
 		return err
 	}}
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "sync output directory")

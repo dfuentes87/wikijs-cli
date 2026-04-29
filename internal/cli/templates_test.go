@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -26,5 +27,21 @@ func TestTemplateLifecycle(t *testing.T) {
 	}
 	if err := deleteTemplate("doc"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTemplateShowIsUncolored(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := saveTemplate("doc", "# {{title}}"); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	cmd := newRootCommand(&app{format: "table", out: &out, errOut: &errOut, in: strings.NewReader("")})
+	cmd.SetArgs([]string{"template", "show", "doc"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if hasANSI(out.String()) || out.String() != "# {{title}}" {
+		t.Fatalf("template show output = %q", out.String())
 	}
 }

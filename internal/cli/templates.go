@@ -50,7 +50,7 @@ func (a *app) templateCreateCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "template-create", Path: args[0]})
 		}
-		_, err = fmt.Fprintf(a.out, "Saved template %s\n", args[0])
+		_, err = fmt.Fprintln(a.out, a.success(fmt.Sprintf("Saved template %s", args[0])))
 		return err
 	}}
 	cmd.Flags().StringVar(&file, "file", "", "read template from file")
@@ -82,7 +82,7 @@ func (a *app) templateDeleteCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "template-delete", Path: args[0]})
 		}
-		_, err := fmt.Fprintf(a.out, "Deleted template %s\n", args[0])
+		_, err := fmt.Fprintln(a.out, a.success(fmt.Sprintf("Deleted template %s", args[0])))
 		return err
 	}}
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation")

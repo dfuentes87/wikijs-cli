@@ -135,7 +135,7 @@ func (a *app) validateCommand() *cobra.Command {
 			if err := output.JSON(a.out, result); err != nil {
 				return err
 			}
-		} else if err := printValidationResult(a.out, result); err != nil {
+		} else if err := printValidationResult(a.out, result, a.colorEnabled()); err != nil {
 			return err
 		}
 		if !result.Valid {
@@ -355,20 +355,20 @@ func hasWikiPathPrefix(pagePath, prefix string) bool {
 	return pagePath == prefix || strings.HasPrefix(pagePath, prefix+"/")
 }
 
-func printValidationResult(w io.Writer, result validationResult) error {
+func printValidationResult(w io.Writer, result validationResult, colorEnabled bool) error {
 	if result.Valid {
 		_, err := fmt.Fprintf(w, "Validated %d pages; no errors found\n", result.Pages)
 		return err
 	}
 	var lines []string
 	for _, issue := range result.Errors {
-		lines = append(lines, fmt.Sprintf("%s:%d %s: %s", issue.PagePath, issue.Line, issue.Rule, issue.Message))
+		lines = append(lines, output.Color(colorEnabled, output.Red, fmt.Sprintf("%s:%d %s: %s", issue.PagePath, issue.Line, issue.Rule, issue.Message)))
 	}
 	for _, link := range result.BrokenLinks {
-		lines = append(lines, fmt.Sprintf("%s:%d broken link %s -> %s", link.PagePath, link.Line, link.Target, link.Resolved))
+		lines = append(lines, output.Color(colorEnabled, output.Red, fmt.Sprintf("%s:%d broken link %s -> %s", link.PagePath, link.Line, link.Target, link.Resolved)))
 	}
 	for _, image := range result.BrokenImages {
-		lines = append(lines, fmt.Sprintf("%s:%d broken image %s -> %s", image.PagePath, image.Line, image.Target, image.Resolved))
+		lines = append(lines, output.Color(colorEnabled, output.Red, fmt.Sprintf("%s:%d broken image %s -> %s", image.PagePath, image.Line, image.Target, image.Resolved)))
 	}
 	sort.Strings(lines)
 	for _, line := range lines {
@@ -377,7 +377,7 @@ func printValidationResult(w io.Writer, result validationResult) error {
 		}
 	}
 	if len(result.Warnings) > 0 {
-		fmt.Fprintf(w, "%d warnings\n", len(result.Warnings))
+		fmt.Fprintln(w, output.Color(colorEnabled, output.Yellow, fmt.Sprintf("%d warnings", len(result.Warnings))))
 	}
 	return nil
 }

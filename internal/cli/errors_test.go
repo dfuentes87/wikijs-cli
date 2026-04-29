@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -54,5 +55,26 @@ func TestFormatError(t *testing.T) {
 				t.Fatalf("FormatError() = %q, want to contain %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFormatErrorTreatsForbiddenGraphQLErrorsAsAuth(t *testing.T) {
+	err := api.GraphQLErrors{{Message: "Forbidden"}, {Message: "Forbidden"}}
+	got := FormatError(err)
+	if !strings.Contains(got, "Authentication failed") {
+		t.Fatalf("FormatError() = %q", got)
+	}
+}
+
+func TestPrintErrorColor(t *testing.T) {
+	var buf bytes.Buffer
+	PrintErrorColor(&buf, errors.New("boom"), true)
+	if !strings.Contains(buf.String(), "\033[") {
+		t.Fatalf("colored error missing ANSI: %q", buf.String())
+	}
+	buf.Reset()
+	PrintErrorColor(&buf, errors.New("boom"), false)
+	if strings.Contains(buf.String(), "\033[") {
+		t.Fatalf("plain error contains ANSI: %q", buf.String())
 	}
 }

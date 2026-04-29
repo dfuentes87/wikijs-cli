@@ -102,16 +102,16 @@ maintainers to figure out important details about your setup.
 > category for reporting bugs — thank you!
 
 [closed issues]: https://github.com/dfuentes87/wikijs-cli/issues?q=is%3Aissue%20state%3Aclosed
-[discussions]: https://github.com/dfuentes87/wikijs-cli/discussions?discussions_q=is%3Aclosed
-["Issue Triage"]: https://github.com/dfuentes87/wikijs-cli/discussions/new?category=issue-triage
+[discussions]: https://github.com/dfuentes87/wikijs-cli/discussions
+[error/bug reports]: https://github.com/dfuentes87/wikijs-cli/discussions/categories/error-bug-report
 
 ### I have an idea for a feature
 
 Like bug reports, first search through both issues and discussions and try to
 find if your feature has already been requested. Otherwise, open a discussion
-in the ["Feature Requests, Ideas"] category.
+in the ["Feature Requests"] category.
 
-["Feature Requests, Ideas"]: https://github.com/dfuentes87/wikijs-cli/discussions/new?category=feature-requests-ideas
+[Feature Requests]: https://github.com/dfuentes87/wikijs-cli/discussions/categories/feature-requests
 
 ### I've implemented a feature
 

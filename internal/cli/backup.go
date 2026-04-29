@@ -51,7 +51,7 @@ func (a *app) backupCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "backup", Path: outputPath, Result: operationSummary{Pages: len(fullPages)}})
 		}
-		_, err = fmt.Fprintf(a.out, "Backed up %d pages to %s\n", len(fullPages), outputPath)
+		_, err = fmt.Fprintln(a.out, a.success(fmt.Sprintf("Backed up %d pages to %s", len(fullPages), outputPath)))
 		return err
 	}}
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "wikijs-backup.json", "backup output path, or - for stdout")
@@ -114,7 +114,7 @@ func (a *app) restoreBackupCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "restore-backup", Result: summary})
 		}
-		_, err = fmt.Fprintf(a.out, "Restore complete: %d created, %d updated, %d skipped\n", summary.Created, summary.Updated, summary.Skipped)
+		_, err = fmt.Fprintln(a.out, a.success(fmt.Sprintf("Restore complete: %d created, %d updated, %d skipped", summary.Created, summary.Updated, summary.Skipped)))
 		return err
 	}}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be restored without changing Wiki.js")

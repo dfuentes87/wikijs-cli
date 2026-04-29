@@ -26,13 +26,13 @@ func (a *app) shellCommand() *cobra.Command {
 			}
 			parts, err := splitCommandLine(line)
 			if err != nil {
-				fmt.Fprintln(a.errOut, FormatError(err))
+				PrintErrorColor(a.errOut, err, a.colorEnabled())
 				continue
 			}
 			child := newRootCommand(a)
 			child.SetArgs(parts)
 			if err := child.ExecuteContext(cmd.Context()); err != nil {
-				fmt.Fprintln(a.errOut, FormatError(err))
+				PrintErrorColor(a.errOut, err, a.colorEnabled())
 			}
 		}
 	}}

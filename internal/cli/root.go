@@ -44,6 +44,7 @@ type app struct {
 	format     string
 	verbose    bool
 	debug      bool
+	noColor    bool
 	rateLimit  int
 	out        io.Writer
 	errOut     io.Writer
@@ -70,6 +71,7 @@ func newRootCommand(a *app) *cobra.Command {
 	cmd.PersistentFlags().StringVarP(&a.format, "format", "f", "table", "output format: table or json")
 	cmd.PersistentFlags().BoolVar(&a.verbose, "verbose", false, "enable verbose output")
 	cmd.PersistentFlags().BoolVar(&a.debug, "debug", false, "enable debug output")
+	cmd.PersistentFlags().BoolVar(&a.noColor, "no-color", false, "disable ANSI color output")
 	cmd.PersistentFlags().IntVar(&a.rateLimit, "rate-limit", 0, "delay between API requests in milliseconds")
 
 	cmd.AddCommand(
@@ -108,6 +110,25 @@ func newRootCommand(a *app) *cobra.Command {
 	return cmd
 }
 
+func CommandColorEnabled(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return true
+	}
+	root := cmd.Root()
+	if root == nil {
+		root = cmd
+	}
+	noColor := false
+	if flag := root.PersistentFlags().Lookup("no-color"); flag != nil {
+		noColor = flag.Value.String() == "true"
+	}
+	format := "table"
+	if flag := root.PersistentFlags().Lookup("format"); flag != nil {
+		format = flag.Value.String()
+	}
+	return !noColor && format == "table"
+}
+
 func (a *app) getClient() (WikiClient, error) {
 	if a.client != nil {
 		return a.client, nil
@@ -140,6 +161,22 @@ func (a *app) print(data any, headers []string, rows [][]string) error {
 		return fmt.Errorf("unsupported format %q", a.format)
 	}
 	return output.Table(a.out, headers, rows)
+}
+
+func (a *app) colorEnabled() bool {
+	return !a.noColor && a.format == "table"
+}
+
+func (a *app) color(code, text string) string {
+	return output.Color(a.colorEnabled(), code, text)
+}
+
+func (a *app) success(text string) string {
+	return a.color(output.Green, text)
+}
+
+func (a *app) warn(text string) string {
+	return a.color(output.Yellow, text)
 }
 
 type successResult struct {
@@ -355,7 +392,7 @@ func (a *app) moveCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "move", ID: id, Path: args[1]})
 		}
-		_, err = fmt.Fprintf(a.out, "Moved page %d to %s\n", id, args[1])
+		_, err = fmt.Fprintf(a.out, "%s\n", a.success(fmt.Sprintf("Moved page %d to %s", id, args[1])))
 		return err
 	}}
 	cmd.Flags().StringVar(&locale, "locale", "", "destination locale")
@@ -382,7 +419,7 @@ func (a *app) deleteCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "delete", ID: id})
 		}
-		_, err = fmt.Fprintf(a.out, "Deleted page %d\n", id)
+		_, err = fmt.Fprintf(a.out, "%s\n", a.success(fmt.Sprintf("Deleted page %d", id)))
 		return err
 	}}
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation")
@@ -453,7 +490,7 @@ func (a *app) revertCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "revert", PageID: pageID, VersionID: versionID})
 		}
-		_, err = fmt.Fprintf(a.out, "Reverted page %d to version %d\n", pageID, versionID)
+		_, err = fmt.Fprintf(a.out, "%s\n", a.success(fmt.Sprintf("Reverted page %d to version %d", pageID, versionID)))
 		return err
 	}}
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation")
@@ -494,7 +531,7 @@ func (a *app) assetCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "upload", Message: "Asset uploaded", Result: result})
 		}
-		_, err = fmt.Fprintln(a.out, "Asset uploaded")
+		_, err = fmt.Fprintln(a.out, a.success("Asset uploaded"))
 		return err
 	}}
 	upload.Flags().StringVar(&rename, "rename", "", "upload with a different filename")
@@ -517,7 +554,7 @@ func (a *app) assetCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "delete_asset", ID: id})
 		}
-		_, err = fmt.Fprintf(a.out, "Deleted asset %d\n", id)
+		_, err = fmt.Fprintf(a.out, "%s\n", a.success(fmt.Sprintf("Deleted asset %d", id)))
 		return err
 	}}
 	del.Flags().BoolVar(&force, "force", false, "skip confirmation")
