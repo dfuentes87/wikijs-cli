@@ -291,10 +291,11 @@ wikijs --format json <command>
 wikijs --verbose <command>
 wikijs --debug <command>
 wikijs --rate-limit 500 <command>
+wikijs --no-color <command>    # Disable colors (for CI/scripts)
 ```
 
 Supported output formats are `table` and `json`.
-`--verbose` logs request paths and HTTP statuses to stderr. `--debug` also logs.
+Color is only used for table/human output. `--verbose` logs request paths and HTTP statuses to stderr. `--debug` also logs.
 
 Use `wikijs completion --help` for shell-specific installation instructions.
 

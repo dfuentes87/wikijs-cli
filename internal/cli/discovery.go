@@ -58,7 +58,7 @@ func (a *app) tagCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "tag_" + args[1], ID: id, Result: page})
 		}
-		_, err = fmt.Fprintf(a.out, "Updated tags for page %d: %s\n", id, strings.Join([]string(page.Tags), ", "))
+		_, err = fmt.Fprintln(a.out, a.success(fmt.Sprintf("Updated tags for page %d: %s", id, strings.Join([]string(page.Tags), ", "))))
 		return err
 	}}
 	return cmd

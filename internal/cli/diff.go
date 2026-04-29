@@ -46,7 +46,7 @@ func (a *app) diffCommand() *cobra.Command {
 			_, err = fmt.Fprintf(a.out, "No differences between %s and %s\n", result.From, result.To)
 			return err
 		}
-		_, err = fmt.Fprint(a.out, result.Diff)
+		_, err = fmt.Fprint(a.out, colorDiff(result.Diff, a.colorEnabled()))
 		return err
 	}}
 }
@@ -166,6 +166,26 @@ func unifiedLineDiff(fromLabel, toLabel, from, to string) string {
 		j++
 	}
 	return b.String()
+}
+
+func colorDiff(diff string, enabled bool) string {
+	if !enabled || diff == "" {
+		return diff
+	}
+	lines := strings.SplitAfter(diff, "\n")
+	for i, line := range lines {
+		text := strings.TrimSuffix(line, "\n")
+		suffix := strings.TrimPrefix(line, text)
+		switch {
+		case strings.HasPrefix(text, "--- ") || strings.HasPrefix(text, "+++ "):
+			lines[i] = output.Color(true, output.Cyan, text) + suffix
+		case strings.HasPrefix(text, "+"):
+			lines[i] = output.Color(true, output.Green, text) + suffix
+		case strings.HasPrefix(text, "-"):
+			lines[i] = output.Color(true, output.Red, text) + suffix
+		}
+	}
+	return strings.Join(lines, "")
 }
 
 func findNextMatchingLine(fromLines, toLines []string, fromStart, toStart, window int) (int, int) {

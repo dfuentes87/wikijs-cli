@@ -23,8 +23,9 @@ func (a *app) printSummary(action string, summary operationSummary) error {
 	if a.format == "json" {
 		return output.JSON(a.out, successResult{Success: true, Action: action, Result: summary})
 	}
-	_, err := fmt.Fprintf(a.out, "%s complete: %d created, %d updated, %d skipped, %d matched, %d changed\n",
+	message := fmt.Sprintf("%s complete: %d created, %d updated, %d skipped, %d matched, %d changed",
 		action, summary.Created, summary.Updated, summary.Skipped, summary.Matched, summary.Changed)
+	_, err := fmt.Fprintln(a.out, a.success(message))
 	return err
 }
 
@@ -32,7 +33,7 @@ func (a *app) progress(label string, current, total int) {
 	if total <= 0 {
 		return
 	}
-	fmt.Fprintf(a.errOut, "\r%s: %d/%d", label, current, total)
+	fmt.Fprintf(a.errOut, "\r%s: %d/%d", a.color(output.Cyan, label), current, total)
 }
 
 func (a *app) progressDone() {

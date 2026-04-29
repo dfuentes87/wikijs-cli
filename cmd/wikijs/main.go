@@ -13,8 +13,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := cli.NewRootCommand().ExecuteContext(ctx); err != nil {
-		cli.PrintError(os.Stderr, err)
+	cmd := cli.NewRootCommand()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		cli.PrintErrorColor(os.Stderr, err, cli.CommandColorEnabled(cmd))
 		os.Exit(1)
 	}
 }

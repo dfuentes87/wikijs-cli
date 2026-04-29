@@ -8,10 +8,15 @@ import (
 
 	"github.com/dfuentes87/wikijs-cli/internal/api"
 	"github.com/dfuentes87/wikijs-cli/internal/config"
+	"github.com/dfuentes87/wikijs-cli/internal/output"
 )
 
 func PrintError(w io.Writer, err error) {
 	fmt.Fprintln(w, FormatError(err))
+}
+
+func PrintErrorColor(w io.Writer, err error, colorEnabled bool) {
+	fmt.Fprintln(w, output.Color(colorEnabled, output.Red, FormatError(err)))
 }
 
 func FormatError(err error) string {

@@ -60,7 +60,7 @@ func (a *app) exportCommand() *cobra.Command {
 		if a.format == "json" {
 			return output.JSON(a.out, successResult{Success: true, Action: "export", Path: args[0], Result: summary})
 		}
-		_, err = fmt.Fprintf(a.out, "Exported %d pages to %s\n", summary.Pages, args[0])
+		_, err = fmt.Fprintln(a.out, a.success(fmt.Sprintf("Exported %d pages to %s", summary.Pages, args[0])))
 		return err
 	}}
 	cmd.Flags().StringVar(&fileFormat, "file-format", "markdown", "export file format: markdown or json")
